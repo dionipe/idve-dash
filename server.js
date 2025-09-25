@@ -256,8 +256,9 @@ app.put('/api/instances/:id/start', (req, res) => {
           // Simplified network - use user networking instead of bridge for now
           qemuCmd += ` -net nic,model=virtio -net user`;
           
-          // Graphics and display
-          qemuCmd += ` -vga none -nographic`;
+          // Graphics and display - enable VNC for console access
+          const vncPort = 5900 + parseInt(config.id.replace(/\D/g, '')) || 5901; // Use instance ID to calculate unique VNC port
+          qemuCmd += ` -vnc 0.0.0.0:${vncPort - 5900} -k en-us`;
           
           // Add QEMU agent
           if (config.qemuAgent) {
@@ -366,6 +367,17 @@ app.get('/api/instances/:id/status', (req, res) => {
       isRunning: isRunning,
       status: isRunning ? 'running' : 'stopped'
     });
+  });
+});
+
+// Get VNC port for instance console
+app.get('/api/instances/:id/vnc', (req, res) => {
+  const instanceId = req.params.id;
+  const vncPort = 5900 + parseInt(instanceId.replace(/\D/g, '')) || 5901;
+  res.json({ 
+    instanceId: instanceId,
+    vncPort: vncPort,
+    vncUrl: `vnc.html?host=localhost&port=${vncPort}`
   });
 });
 

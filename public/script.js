@@ -413,8 +413,18 @@ function selectImage(path, type) {
 
 // Instance management functions
 function openConsole(instanceId) {
-  // For now, just alert. In real implementation, would open terminal/console
-  alert(`Opening console for ${instanceId}`);
+  // Get VNC information for the instance
+  fetch(`/api/instances/${instanceId}/vnc`)
+  .then(response => response.json())
+  .then(data => {
+    // Open noVNC console in a new window
+    const consoleUrl = `/novnc/vnc.html?host=localhost&port=${data.vncPort}&autoconnect=true`;
+    window.open(consoleUrl, `console-${instanceId}`, 'width=1024,height=768,scrollbars=no,resizable=yes');
+  })
+  .catch(error => {
+    console.error('Error opening console:', error);
+    alert(`Failed to open console for ${instanceId}: ${error.message}`);
+  });
 }
 
 function editInstance(instanceId) {
