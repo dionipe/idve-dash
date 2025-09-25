@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>        
+   <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>IDVE Dashboard</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#137fec",
+            "background-light": "#f6f7f8",
+            "background-dark": "#101922",
+          },
+          fontFamily: {
+            display: ["Space Grotesk"],
+          },
+          borderRadius: { DEFAULT: "0.5rem", lg: "1rem", xl: "1.5rem", full: "9999px" },
+        },
+      },
+    };
+  </script>
+  <style>
+    .clay-shadow {
+      box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.2);
+    }
+    .clay-shadow-inset {
+      box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    .dark .clay-shadow {
+      box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.5);
+    }
+    .dark .clay-shadow-inset {
+      box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200">
+  <div class="flex h-screen flex-col">
+    <header class="flex items-center justify-between border-b border-slate-200/10 px-6 py-3">
+      <div class="flex items-center gap-6">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-3xl"> cloud_queue </span>
+          <h1 class="font-bold text-lg text-slate-900 dark:text-white">IDVE</h1>
+        </div>
+        <nav class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <a class="text-primary font-semibold" href="#" onclick="showSection('dashboard')">Dashboard</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="#" onclick="showSection('instances')">Instances</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/images.html">Images</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/networks.html">Networks</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/storages.html">Storages</a>
+        </nav>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="relative hidden md:block">
+          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"> search </span>
+          <input class="w-48 rounded-full border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 pl-10 pr-4 text-sm focus:border-primary focus:ring-primary" placeholder="Search..." type="text"/>
+        </div>
+        <button class="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined"> notifications </span>
+          <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary"></span>
+        </button>
+        <img alt="User avatar" class="h-9 w-9 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB98xLjzGQ3eawNaN7rlsl7olntzdPZngTqZ6SBBwpjQvb-5hn-AAbeydp7rYxilpBFCgcQ09SstAGAEKywOjcWCQFrtlO9TAmOxqkr_GWpRNmlA5RwprLELug8A8rbmPLuSBphGZBmEGaJoYHqOyjQ57vVDY9NWeEYo5zoknLfuNuwaZoDS4Kk1QYa3sBAOkMH9W4J3zWD_PhQudxDbSQIugGxiTUPTgv-9C_M0kbwPqUiv_CK231ttNQfK5SPA60BetjzroTVJ_s"/>
+      </div>
+    </header>
+    <main class="flex-1 overflow-y-auto p-6 lg:p-8">
+      <div class="mx-auto max-w-7xl">
+        <section id="dashboard" class="section active">
+          <div class="mb-6 flex items-center justify-between">
+            <div>
+              <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Dashboard</h2>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Overview of your virtual machines and resources.</p>
+            </div>
+            <button onclick="showCreateInstanceModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
+              <span class="material-symbols-outlined mr-2">add</span>
+              Create Instance
+            </button>
+          </div>
+          <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <div class="flex items-center gap-4">
+                <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                  <span class="material-symbols-outlined">dns</span>
+                </div>
+                <div>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Total Instances</p>
+                  <p class="text-2xl font-bold text-slate-900 dark:text-white" id="total-instances">0</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <div class="flex items-center gap-4">
+                <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-green-500/20 text-green-500">
+                  <span class="material-symbols-outlined">check_circle</span>
+                </div>
+                <div>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Running</p>
+                  <p class="text-2xl font-bold text-slate-900 dark:text-white" id="running-instances">0</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <div class="flex items-center gap-4">
+                <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-yellow-500/20 text-yellow-500">
+                  <span class="material-symbols-outlined">pause</span>
+                </div>
+                <div>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Stopped</p>
+                  <p class="text-2xl font-bold text-slate-900 dark:text-white" id="stopped-instances">0</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <div class="flex items-center gap-4">
+                <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-red-500/20 text-red-500">
+                  <span class="material-symbols-outlined">error</span>
+                </div>
+                <div>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Errors</p>
+                  <p class="text-2xl font-bold text-slate-900 dark:text-white" id="error-instances">0</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-8 rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+            <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Recent Instances</h3>
+            <div id="recent-instances" class="space-y-4">
+              <!-- Instances will be loaded here -->
+            </div>
+          </div>
+        </section>
+        <section id="instances" class="section">
+          <div class="mb-6 flex items-center justify-between">
+            <div>
+              <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Instances</h2>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Manage your virtual machine instances.</p>
+            </div>
+            <button onclick="showCreateInstanceModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
+              <span class="material-symbols-outlined mr-2">add</span>
+              Create Instance
+            </button>
+          </div>
+          <div id="instances-list" class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <!-- Instances will be loaded here -->
+          </div>
+        </section>
+            <!-- Networks will be loaded here -->
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Create Instance Wizard</h3>
+        <button onclick="closeModal()" class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      
+      <!-- Progress Bar -->
+      <div class="mb-6">
+        <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400 mb-2">
+          <span>General</span>
+          <span>OS</span>
+          <span>System</span>
+          <span>Disk</span>
+          <span>CPU</span>
+          <span>Memory</span>
+          <span>Network</span>
+          <span>Confirm</span>
+        </div>
+        <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-2">
+          <div id="progress-bar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 12.5%"></div>
+        </div>
+      </div>
+
+      <!-- Steps -->
+      <form id="create-instance-form">
+        <!-- Step 1: General -->
+        <div id="step-general" class="step active">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">General Settings</h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Host/Node</label>
+              <input type="text" id="host" name="host" value="localhost" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" readonly>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Instance ID</label>
+              <input type="text" id="instance-id" name="instanceId" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Name</label>
+              <input type="text" id="name" name="name" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: OS -->
+        <div id="step-os" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Operating System</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Use CD (Disc Image file/ISO)</label>
+              <select id="cdrom" name="cdrom" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="">None</option>
+                <!-- ISOs will be populated via JS -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Guest OS</label>
+              <select id="os-type" name="osType" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="linux">Linux</option>
+                <option value="windows">Windows</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: System -->
+        <div id="step-system" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">System Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Graphic Card</label>
+              <select id="graphics" name="graphics" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="qxl">QXL</option>
+                <option value="virtio">VirtIO</option>
+                <option value="cirrus">Cirrus</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Machine</label>
+              <select id="machine" name="machine" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="pc">PC</option>
+                <option value="q35">Q35</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">BIOS</label>
+              <select id="bios" name="bios" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="seabios">SeaBIOS</option>
+                <option value="ovmf">OVMF</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">SCSI Controller</label>
+              <select id="scsi-controller" name="scsiController" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="virtio-scsi-pci">VirtIO SCSI PCI</option>
+                <option value="lsi53c895a">LSI 53C895A</option>
+              </select>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="add-tpm" name="addTpm" class="mr-2">
+              <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Add TPM</label>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="qemu-agent" name="qemuAgent" class="mr-2" checked>
+              <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Qemu Agent</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Disk -->
+        <div id="step-disk" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Disk Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bus/Device</label>
+              <select id="disk-bus" name="diskBus" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="scsi">SCSI</option>
+                <option value="ide">IDE</option>
+                <option value="virtio">VirtIO Block</option>
+                <option value="sata">SATA</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">SCSI Controller</label>
+              <select id="disk-scsi-controller" name="diskScsiController" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="virtio-scsi-pci">VirtIO SCSI PCI</option>
+                <option value="lsi53c895a">LSI 53C895A</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Storage</label>
+              <select id="storage-pool" name="storagePool" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="/var/lib/idve/instances">Local Disk Images</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Disk Size (GiB)</label>
+              <input type="number" id="disk-size" name="diskSize" value="20" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 5: CPU -->
+        <div id="step-cpu" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">CPU Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Socket</label>
+              <input type="number" id="cpu-sockets" name="cpuSockets" value="1" min="1" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Core</label>
+              <input type="number" id="cpu-cores" name="cpuCores" value="2" min="1" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Type</label>
+              <select id="cpu-type" name="cpuType" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="host">Host</option>
+                <option value="qemu64">QEMU64</option>
+                <option value="kvm64">KVM64</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 6: Memory -->
+        <div id="step-memory" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Memory Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Memory (MiB)</label>
+              <input type="number" id="memory" name="memory" value="2048" min="256" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="balloon-device" name="balloonDevice" class="mr-2" checked>
+              <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Ballooning Device</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 7: Network -->
+        <div id="step-network" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Network Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bridge</label>
+              <select id="network-bridge" name="networkBridge" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="br0">br0</option>
+                <option value="virbr0">virbr0</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">VLAN Tag</label>
+              <input type="number" id="vlan-tag" name="vlanTag" placeholder="Optional" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Model</label>
+              <select id="network-model" name="networkModel" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="virtio">VirtIO</option>
+                <option value="e1000">E1000</option>
+                <option value="rtl8139">RTL8139</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">MAC Address</label>
+              <input type="text" id="mac-address" name="macAddress" placeholder="Auto-generate" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 8: Confirm -->
+        <div id="step-confirm" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Confirm Configuration</h4>
+          <div class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 mb-4">
+            <table class="w-full text-sm">
+              <thead>
+                <tr>
+                  <th class="text-left py-1">Key</th>
+                  <th class="text-left py-1">Value</th>
+                </tr>
+              </thead>
+              <tbody id="config-summary">
+                <!-- Configuration summary will be populated -->
+              </tbody>
+            </table>
+          </div>
+          <div class="flex items-center">
+            <input type="checkbox" id="start-after-create" name="startAfterCreate" class="mr-2" checked>
+            <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Start after created</label>
+          </div>
+        </div>
+      </form>
+
+      <!-- Navigation Buttons -->
+      <div class="flex justify-between mt-6">
+        <button id="prev-btn" class="px-4 py-2 text-sm font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50" disabled>Previous</button>
+        <div>
+          <button id="next-btn" class="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 mr-2">Next</button>
+          <button id="create-btn" class="px-4 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 hidden">Create Instance</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

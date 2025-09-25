@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Networks - IDVE Dashboard</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#137fec",
+            "background-light": "#f6f7f8",
+            "background-dark": "#101922",
+          },
+          fontFamily: {
+            display: ["Space Grotesk"],
+          },
+          borderRadius: { DEFAULT: "0.5rem", lg: "1rem", xl: "1.5rem", full: "9999px" },
+        },
+      },
+    };
+  </script>
+  <style>
+    .clay-shadow {
+      box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.2);
+    }
+    .clay-shadow-inset {
+      box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    .dark .clay-shadow {
+      box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.5);
+    }
+    .dark .clay-shadow-inset {
+      box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200">
+  <div class="flex h-screen flex-col">
+    <header class="flex items-center justify-between border-b border-slate-200/10 px-6 py-3">
+      <div class="flex items-center gap-6">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-3xl"> cloud_queue </span>
+          <h1 class="font-bold text-lg text-slate-900 dark:text-white">IDVE</h1>
+        </div>
+        <nav class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/">Dashboard</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/instances.html">Instances</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/images.html">Images</a>
+          <a class="text-primary font-semibold" href="/networks.html">Networks</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/storages.html">Storages</a>
+        </nav>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="relative hidden md:block">
+          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"> search </span>
+          <input class="w-48 rounded-full border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 pl-10 pr-4 text-sm focus:border-primary focus:ring-primary" placeholder="Search..." type="text"/>
+        </div>
+        <button class="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined"> notifications </span>
+          <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary"></span>
+        </button>
+        <img alt="User avatar" class="h-9 w-9 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB98xLjzGQ3eawNaN7rlsl7olntzdPZngTqZ6SBBwpjQvb-5hn-AAbeydp7rYxilpBFCgcQ09SstAGAEKywOjcWCQFrtlO9TAmOxqkr_GWpRNmlA5RwprLELug8A8rbmPLuSBphGZBmEGaJoYHqOyjQ57vVDY9NWeEYo5zoknLfuNuwaZoDS4Kk1QYa3sBAOkMH9W4J3zWD_PhQudxDbSQIugGxiTUPTgv-9C_M0kbwPqUiv_CK231ttNQfK5SPA60BetjzroTVJ_s"/>
+      </div>
+    </header>
+    <main class="flex-1 overflow-y-auto p-6 lg:p-8">
+      <div class="mx-auto max-w-7xl">
+        <div class="mb-6 flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Networks</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Manage network configurations including interfaces, bonds, VLANs, and bridges.</p>
+          </div>
+          <button onclick="showCreateNetworkModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
+            <span class="material-symbols-outlined mr-2">add</span>
+            Create Network
+          </button>
+        </div>
+        <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow overflow-hidden">
+          <table class="w-full">
+            <thead class="bg-slate-100 dark:bg-slate-800/50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Name</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Type</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">AutoStart</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">VlanAware</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Port/Slave/Bond</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">CIDR</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Gateway</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="networks-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+              <!-- Networks will be loaded here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div id="network-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="w-full max-w-md rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="modal-title" class="text-lg font-bold text-slate-900 dark:text-white">Create Network</h3>
+        <button onclick="closeNetworkModal()" class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <form id="create-network-form">
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Name</label>
+          <input type="text" id="network-name" name="name" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Type</label>
+          <select id="network-type" name="type" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            <option value="interface">Interface</option>
+            <option value="bridge">Bridge</option>
+            <option value="bond">Bond</option>
+            <option value="vlan">VLAN</option>
+          </select>
+        </div>
+        <div id="bridge-ports" class="mb-4 hidden">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bridge Ports (Interfaces to connect)</label>
+          <div id="interface-list" class="space-y-2 max-h-32 overflow-y-auto">
+            <!-- Interfaces will be populated here -->
+          </div>
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">CIDR</label>
+          <input type="text" id="network-cidr" name="cidr" placeholder="192.168.1.0/24" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+        </div>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Gateway</label>
+          <input type="text" id="network-gateway" name="gateway" placeholder="192.168.1.1" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+        </div>
+        <button type="submit" id="submit-btn" class="w-full rounded-lg bg-primary py-2 font-semibold text-white transition hover:bg-primary/90">Create</button>
+      </form>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="networks.js"></script>
+</body>
+</html>
