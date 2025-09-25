@@ -20,11 +20,15 @@ app.get('/api/instances/:id/vnc', (req, res) => {
   const instanceId = req.params.id;
   const vncPort = 5900 + parseInt(instanceId.replace(/\D/g, '')) || 5901;
   const wsPort = 7900 + parseInt(instanceId.replace(/\D/g, '')) || 7901; // WebSocket port
+  
+  // Use the actual host from the request instead of hardcoded localhost
+  const host = req.headers.host || req.hostname || 'localhost';
+  
   res.json({ 
     instanceId: instanceId,
     vncPort: vncPort,
     wsPort: wsPort,
-    vncUrl: `vnc.html?host=localhost&port=${wsPort}&path=&autoconnect=true`
+    vncUrl: `vnc.html?host=${host}&port=${wsPort}&path=&autoconnect=true`
   });
 });
 
