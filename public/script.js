@@ -24,11 +24,33 @@ function showCreateInstanceModal() {
   currentStep = 0;
   showStep(currentStep);
   populateISOs();
+  populateBridges();
+  populateStoragePools();
+  
+  // Reset form state for new instance creation
+  const form = document.getElementById('create-instance-form');
+  form.reset();
+  delete form.dataset.instanceId;
+  document.getElementById('create-btn').textContent = 'Create Instance';
+  
+  // Set hostname dynamically
+  document.getElementById('host').value = window.location.hostname || 'idve-08';
 }
 
 function closeModal() {
   document.getElementById('modal').classList.add('hidden');
   document.getElementById('modal').classList.remove('flex');
+}
+
+function showEditModal() {
+  document.getElementById('edit-modal').classList.remove('hidden');
+  document.getElementById('edit-modal').classList.add('flex');
+  populateEditBridges();
+}
+
+function closeEditModal() {
+  document.getElementById('edit-modal').classList.add('hidden');
+  document.getElementById('edit-modal').classList.remove('flex');
 }
 
 let currentStep = 0;
@@ -75,6 +97,55 @@ function populateISOs() {
       const option = document.createElement('option');
       option.value = `/var/lib/idve/isos/${iso}`;
       option.textContent = iso;
+      select.appendChild(option);
+    });
+  });
+}
+
+function populateBridges() {
+  fetch('/api/networks')
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('network-bridge');
+    select.innerHTML = '<option value="">Select Bridge</option>';
+    data.forEach(network => {
+      if (network.type === 'bridge') {
+        const option = document.createElement('option');
+        option.value = network.name;
+        option.textContent = `${network.name} (${network.ports || 'No interfaces'})`;
+        select.appendChild(option);
+      }
+    });
+  });
+}
+
+function populateEditBridges() {
+  fetch('/api/networks')
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('edit-network-bridge');
+    select.innerHTML = '<option value="">Select Bridge</option>';
+    data.forEach(network => {
+      if (network.type === 'bridge') {
+        const option = document.createElement('option');
+        option.value = network.name;
+        option.textContent = `${network.name} (${network.ports || 'No interfaces'})`;
+        select.appendChild(option);
+      }
+    });
+  });
+}
+
+function populateStoragePools() {
+  fetch('/api/storages')
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('storage-pool');
+    select.innerHTML = '<option value="">Select Storage Pool</option>';
+    data.forEach(storage => {
+      const option = document.createElement('option');
+      option.value = storage.path;
+      option.textContent = `${storage.name} (${storage.path})`;
       select.appendChild(option);
     });
   });
@@ -134,15 +205,53 @@ document.getElementById('create-instance-form').addEventListener('submit', funct
   e.preventDefault();
   const formData = new FormData(this);
   const data = Object.fromEntries(formData);
-  fetch('/api/instances', {
-    method: 'POST',
+  const instanceId = this.dataset.instanceId;
+  
+  const method = instanceId ? 'PUT' : 'POST';
+  const url = instanceId ? `/api/instances/${instanceId}` : '/api/instances';
+  
+  fetch(url, {
+    method: method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   })
   .then(response => response.json())
   .then(data => {
-    alert('Instance created successfully!');
+    const action = instanceId ? 'updated' : 'created';
+    alert(`Instance ${action} successfully!`);
+    
+    // Reset form and modal state
+    this.reset();
+    delete this.dataset.instanceId;
+    document.getElementById('create-btn').textContent = 'Create Instance';
+    
     closeModal();
+    loadInstances();
+    loadDashboard();
+  })
+  .catch(error => console.error('Error:', error));
+});
+
+document.getElementById('edit-instance-form').addEventListener('submit', function(e) {
+  e.preventDefault();
+  const formData = new FormData(this);
+  const data = Object.fromEntries(formData);
+  const instanceId = this.dataset.instanceId;
+  
+  fetch(`/api/instances/${instanceId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  })
+  .then(response => response.json())
+  .then(data => {
+    alert('Instance updated successfully!');
+    
+    // Reset form and close modal
+    this.reset();
+    delete this.dataset.instanceId;
+    
+    closeEditModal();
     loadInstances();
     loadDashboard();
   })
@@ -155,30 +264,45 @@ function loadInstances() {
   .then(data => {
     const list = document.getElementById('instances-list');
     list.innerHTML = '';
-    data.forEach(instance => {
-      // For demo, assume all are running. In real implementation, would check actual status
-      const isRunning = true;
-      const card = document.createElement('div');
-      card.className = 'rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6';
-      card.innerHTML = `
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-bold text-slate-900 dark:text-white">${instance}</h3>
-          <span class="material-symbols-outlined ${isRunning ? 'text-green-500' : 'text-red-500'}">${isRunning ? 'check_circle' : 'error'}</span>
-        </div>
-        <div class="space-y-2 text-sm text-slate-500 dark:text-slate-400">
-          <p>Status: ${isRunning ? 'Running' : 'Stopped'}</p>
-          <p>IP: ${isRunning ? '192.168.1.100' : 'N/A'}</p>
-        </div>
-        <div class="mt-4 flex gap-2">
-          <button onclick="openConsole('${instance}')" class="flex-1 rounded-lg bg-primary py-2 font-semibold text-white transition hover:bg-primary/90">Console</button>
-          ${isRunning ? 
-            `<button onclick="stopInstance('${instance}')" class="flex-1 rounded-lg bg-yellow-500 py-2 font-semibold text-white transition hover:bg-yellow-600">Stop</button>` :
-            `<button onclick="startInstance('${instance}')" class="flex-1 rounded-lg bg-green-500 py-2 font-semibold text-white transition hover:bg-green-600">Start</button>`
-          }
-          <button onclick="deleteInstance('${instance}')" class="flex-1 rounded-lg bg-red-500 py-2 font-semibold text-white transition hover:bg-red-600">Delete</button>
-        </div>
-      `;
-      list.appendChild(card);
+    
+    // Check status for all instances
+    const statusPromises = data.map(instance => 
+      fetch(`/api/instances/${instance.id}/status`)
+      .then(response => response.json())
+      .catch(() => ({ isRunning: false, status: 'stopped' })) // Default to stopped if status check fails
+    );
+    
+    Promise.all(statusPromises)
+    .then(statuses => {
+      data.forEach((instance, index) => {
+        const status = statuses[index];
+        const isRunning = status.isRunning;
+        
+        const card = document.createElement('div');
+        card.className = 'rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6';
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">${instance.name || instance.id}</h3>
+            <span class="material-symbols-outlined ${isRunning ? 'text-green-500' : 'text-red-500'}">${isRunning ? 'check_circle' : 'error'}</span>
+          </div>
+          <div class="space-y-2 text-sm text-slate-500 dark:text-slate-400">
+            <p>Host: ${instance.host}</p>
+            <p>Memory: ${instance.memory} MiB</p>
+            <p>CPU: ${instance.cpuSockets} socket(s), ${instance.cpuCores} core(s)</p>
+            <p>Status: ${isRunning ? 'Running' : 'Stopped'}</p>
+          </div>
+          <div class="mt-4 flex gap-2">
+            <button onclick="openConsole('${instance.id}')" class="rounded-lg bg-primary px-3 py-2 font-semibold text-white transition hover:bg-primary/90">Console</button>
+            <button onclick="editInstance('${instance.id}')" class="rounded-lg bg-blue-500 px-3 py-2 font-semibold text-white transition hover:bg-blue-600">Edit</button>
+            ${isRunning ?
+              `<button onclick="stopInstance('${instance.id}')" class="rounded-lg bg-yellow-500 px-3 py-2 font-semibold text-white transition hover:bg-yellow-600">Stop</button>` :
+              `<button onclick="startInstance('${instance.id}')" class="rounded-lg bg-green-500 px-3 py-2 font-semibold text-white transition hover:bg-green-600">Start</button>`
+            }
+            <button onclick="deleteInstance('${instance.id}')" class="rounded-lg bg-red-500 px-3 py-2 font-semibold text-white transition hover:bg-red-600">Delete</button>
+          </div>
+        `;
+        list.appendChild(card);
+      });
     });
   });
 }
@@ -188,28 +312,43 @@ function loadDashboard() {
   .then(response => response.json())
   .then(data => {
     document.getElementById('total-instances').textContent = data.length;
-    document.getElementById('running-instances').textContent = data.length; // Assume all running
-    document.getElementById('stopped-instances').textContent = 0;
-    document.getElementById('error-instances').textContent = 0;
     
-    const recentList = document.getElementById('recent-instances');
-    recentList.innerHTML = '';
-    data.slice(0, 5).forEach(instance => {
-      const item = document.createElement('div');
-      item.className = 'flex items-center justify-between p-4 rounded-lg bg-slate-100 dark:bg-slate-800/50';
-      item.innerHTML = `
-        <div class="flex items-center gap-4">
-          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20 text-primary">
-            <span class="material-symbols-outlined">dns</span>
+    // Check status for all instances to count running/stopped
+    const statusPromises = data.map(instance => 
+      fetch(`/api/instances/${instance.id}/status`)
+      .then(response => response.json())
+      .catch(() => ({ isRunning: false, status: 'stopped' }))
+    );
+    
+    Promise.all(statusPromises)
+    .then(statuses => {
+      const runningCount = statuses.filter(status => status.isRunning).length;
+      const stoppedCount = statuses.filter(status => !status.isRunning).length;
+      
+      document.getElementById('running-instances').textContent = runningCount;
+      document.getElementById('stopped-instances').textContent = stoppedCount;
+      document.getElementById('error-instances').textContent = 0; // For now, no error tracking
+      
+      const recentList = document.getElementById('recent-instances');
+      recentList.innerHTML = '';
+      data.slice(0, 5).forEach((instance, index) => {
+        const status = statuses[index];
+        const item = document.createElement('div');
+        item.className = 'flex items-center justify-between p-4 rounded-lg bg-slate-100 dark:bg-slate-800/50';
+        item.innerHTML = `
+          <div class="flex items-center gap-4">
+            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20 text-primary">
+              <span class="material-symbols-outlined">dns</span>
+            </div>
+            <div>
+              <p class="font-semibold text-slate-900 dark:text-white">${instance.name || instance.id}</p>
+              <p class="text-sm text-slate-500 dark:text-slate-400">${status.isRunning ? 'Running' : 'Stopped'}</p>
+            </div>
           </div>
-          <div>
-            <p class="font-semibold text-slate-900 dark:text-white">${instance}</p>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Running</p>
-          </div>
-        </div>
-        <span class="material-symbols-outlined text-slate-500">more_vert</span>
-      `;
-      recentList.appendChild(item);
+          <span class="material-symbols-outlined text-slate-500">more_vert</span>
+        `;
+        recentList.appendChild(item);
+      });
     });
   });
 }
@@ -276,6 +415,42 @@ function selectImage(path, type) {
 function openConsole(instanceId) {
   // For now, just alert. In real implementation, would open terminal/console
   alert(`Opening console for ${instanceId}`);
+}
+
+function editInstance(instanceId) {
+  fetch(`/api/instances/${instanceId}`)
+  .then(response => response.json())
+  .then(data => {
+    // Mapping between JSON properties and HTML element IDs
+    const fieldMapping = {
+      instanceId: 'edit-instance-id',
+      name: 'edit-name',
+      host: 'edit-host',
+      memory: 'edit-memory',
+      cpuSockets: 'edit-cpu-sockets',
+      cpuCores: 'edit-cpu-cores',
+      networkBridge: 'edit-network-bridge',
+      macAddress: 'edit-mac-address'
+    };
+    
+    // Populate form with existing data
+    Object.keys(data).forEach(key => {
+      const elementId = fieldMapping[key];
+      if (elementId) {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.value = data[key];
+        }
+      }
+    });
+    
+    // Store the instance ID for update operation
+    document.getElementById('edit-instance-form').dataset.instanceId = instanceId;
+    
+    // Show edit modal
+    showEditModal();
+  })
+  .catch(error => console.error('Error loading instance:', error));
 }
 
 function stopInstance(instanceId) {

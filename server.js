@@ -22,14 +22,43 @@ app.get('/', (req, res) => {
 
 // API routes for VMs
 app.get('/api/instances', (req, res) => {
-  // List instances
-  const instancesDir = '/var/lib/idve/instances';
+  const instancesDir = '/etc/idve';
   fs.readdir(instancesDir, (err, files) => {
-    if (err) return res.status(500).json({ error: err.message });
-    // Filter for .qcow2 files and remove extension
-    const instances = files.filter(file => file.endsWith('.qcow2')).map(file => file.replace('.qcow2', ''));
+    if (err) {
+      console.error('Error reading instances directory:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    
+    const instances = [];
+    files.filter(file => file.endsWith('.json')).forEach(file => {
+      try {
+        const configPath = `${instancesDir}/${file}`;
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        instances.push(config);
+      } catch (error) {
+        console.error(`Error reading instance config ${file}:`, error);
+      }
+    });
+    
     res.json(instances);
   });
+});
+
+app.get('/api/instances/:id', (req, res) => {
+  const instanceId = req.params.id;
+  const configPath = `/etc/idve/${instanceId}.json`;
+  
+  try {
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      res.json(config);
+    } else {
+      res.status(404).json({ error: 'Instance not found' });
+    }
+  } catch (error) {
+    console.error(`Error reading instance config ${instanceId}:`, error);
+    res.status(500).json({ error: 'Failed to read instance configuration' });
+  }
 });
 
 app.post('/api/instances', (req, res) => {
@@ -86,7 +115,7 @@ app.post('/api/instances', (req, res) => {
 
   // Add QEMU agent
   if (qemuAgent) {
-    qemuCmd += ' -device virtio-serial -chardev socket,path=/var/lib/libvirt/qemu/${name}.agent,server,nowait,id=${name}_agent -device virtserialport,chardev=${name}_agent,name=org.qemu.guest_agent.0';
+    qemuCmd += ` -device virtio-serial -chardev socket,path=/var/lib/libvirt/qemu/${name}.agent,server,nowait,id=${name}_agent -device virtserialport,chardev=${name}_agent,name=org.qemu.guest_agent.0`;
   }
 
   // Add balloon device
@@ -97,16 +126,40 @@ app.post('/api/instances', (req, res) => {
   // Boot order
   qemuCmd += cdrom ? ' -boot order=dc' : ' -boot order=c';
 
-  // For now, just log the command and create a placeholder
-  console.log('QEMU Command:', qemuCmd);
+      // Save instance configuration as JSON
+    const instanceConfig = {
+      id: instanceId,
+      name,
+      host,
+      osType,
+      cdrom,
+      graphics,
+      machine,
+      bios,
+      scsiController,
+      addTpm,
+      qemuAgent,
+      diskBus,
+      diskScsiController,
+      storagePool,
+      diskSize,
+      cpuSockets: parseInt(cpuSockets),
+      cpuCores: parseInt(cpuCores),
+      cpuType,
+      memory: parseInt(memory),
+      balloonDevice: balloonDevice === 'on',
+      networkBridge,
+      vlanTag,
+      networkModel,
+      macAddress,
+      startAfterCreate: startAfterCreate === 'on',
+      createdAt: new Date().toISOString(),
+      status: 'created'
+    };
 
-  // Create disk image first
-  const { exec } = require('child_process');
-  exec(`qemu-img create -f qcow2 ${diskPath} ${diskSize}G`, (error, stdout, stderr) => {
-    if (error) {
-      console.error('Error creating disk:', error);
-      return res.status(500).json({ error: 'Failed to create disk image' });
-    }
+    const configPath = `/etc/idve/${instanceId}.json`;
+    fs.writeFileSync(configPath, JSON.stringify(instanceConfig, null, 2));
+    console.log(`Instance configuration saved to ${configPath}`);
 
     // If start after create, run the VM
     if (startAfterCreate === 'on') {
@@ -117,35 +170,202 @@ app.post('/api/instances', (req, res) => {
       });
     }
 
-    res.json({ message: 'Instance created successfully', command: qemuCmd });
-  });
+    res.json({ message: 'Instance created successfully', command: qemuCmd, config: instanceConfig });
+});
+
+app.put('/api/instances/:id', (req, res) => {
+  const instanceId = req.params.id;
+  const configPath = `/etc/idve/${instanceId}.json`;
+  
+  try {
+    if (!fs.existsSync(configPath)) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+    
+    const existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const updatedConfig = { ...existingConfig, ...req.body, updatedAt: new Date().toISOString() };
+    
+    fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
+    console.log(`Instance configuration updated: ${configPath}`);
+    
+    res.json({ message: 'Instance updated successfully', config: updatedConfig });
+  } catch (error) {
+    console.error(`Error updating instance ${instanceId}:`, error);
+    res.status(500).json({ error: 'Failed to update instance configuration' });
+  }
 });
 
 app.put('/api/instances/:id/start', (req, res) => {
   const instanceId = req.params.id;
-  // For demo, just log. In real implementation, would start QEMU process
-  console.log(`Starting instance ${instanceId}`);
-  res.json({ message: 'Instance started' });
+  const configPath = `/etc/idve/${instanceId}.json`;
+  
+  try {
+    // Check if instance config exists
+    if (!fs.existsSync(configPath)) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+    
+    // Check if already running
+    exec(`ps aux | grep "qemu-system-x86_64.*-name ${instanceId}" | grep -v grep`, (error, stdout, stderr) => {
+      if (stdout.trim() !== '') {
+        return res.status(400).json({ error: 'Instance is already running' });
+      }
+      
+      // Read instance config
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      
+      // Build QEMU command
+      let qemuCmd = `qemu-system-x86_64 -enable-kvm -name "${config.name}" -m ${config.memory} -smp sockets=${config.cpuSockets},cores=${config.cpuCores} -cpu host`;
+      
+      // Add machine type
+      qemuCmd += ` -machine q35`;
+      
+      // Add BIOS
+      if (config.bios === 'ovmf') {
+        qemuCmd += ' -bios /usr/share/ovmf/OVMF.fd';
+      }
+      
+        // Add disk
+        const storagePool = config.storagePool || '/var/lib/idve/instances';
+        const diskPath = `${storagePool}/${config.id}.qcow2`;
+        console.log(`Disk path: ${diskPath}`);
+        
+        // Create disk if it doesn't exist
+        if (!fs.existsSync(diskPath)) {
+          console.log(`Creating disk file: ${diskPath} (${config.diskSize}G)`);
+          exec(`qemu-img create -f qcow2 ${diskPath} ${config.diskSize}G`, (diskErr, diskOut, diskStderr) => {
+            if (diskErr) {
+              console.error('Error creating disk:', diskErr);
+              return res.status(500).json({ error: 'Failed to create instance disk' });
+            }
+            startQemu();
+          });
+        } else {
+          startQemu();
+        }
+        
+        function startQemu() {
+          // Simplified QEMU command that works
+          qemuCmd += ` -drive file=${diskPath},if=virtio,format=qcow2`;
+          
+          // Add CDROM if specified
+          if (config.cdrom) {
+            qemuCmd += ` -cdrom ${config.cdrom}`;
+          }
+          
+          // Simplified network - use user networking instead of bridge for now
+          qemuCmd += ` -net nic,model=virtio -net user`;
+          
+          // Graphics and display
+          qemuCmd += ` -vga none -nographic`;
+          
+          // Add QEMU agent
+          if (config.qemuAgent) {
+            qemuCmd += ` -device virtio-serial -chardev socket,path=/var/lib/libvirt/qemu/${config.id}.agent,server,nowait,id=agent_${config.id} -device virtserialport,chardev=agent_${config.id},name=org.qemu.guest_agent.0`;
+          }
+          
+          // Add balloon device
+          if (config.balloonDevice) {
+            qemuCmd += ' -device virtio-balloon';
+          }
+          
+          // Boot order
+          qemuCmd += config.cdrom ? ' -boot order=dc' : ' -boot order=c';        console.log(`QEMU command: ${qemuCmd}`);
+        
+        // Start QEMU in background using spawn
+        const qemuArgs = qemuCmd.split(' ').slice(1); // Remove 'qemu-system-x86_64' from args
+        console.log('QEMU args:', qemuArgs);
+        
+        const qemuProcess = spawn('qemu-system-x86_64', qemuArgs, {
+          detached: true,
+          stdio: 'ignore'
+        });
+        
+        qemuProcess.on('error', (err) => {
+          console.error('Failed to start QEMU process:', err);
+        });
+        
+        qemuProcess.on('exit', (code, signal) => {
+          console.log(`QEMU process exited with code ${code} and signal ${signal}`);
+        });
+        
+        qemuProcess.unref(); // Allow parent to exit independently
+        
+        // Update instance status
+        config.status = 'running';
+        config.startedAt = new Date().toISOString();
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        
+        res.json({ message: 'Instance started successfully' });
+      }
+    });
+  } catch (error) {
+    console.error('Error starting instance:', error);
+    res.status(500).json({ error: 'Failed to start instance' });
+  }
 });
 
 app.put('/api/instances/:id/stop', (req, res) => {
   const instanceId = req.params.id;
-  // For demo, just log. In real implementation, would stop QEMU process
-  console.log(`Stopping instance ${instanceId}`);
-  res.json({ message: 'Instance stopped' });
+  const configPath = `/etc/idve/${instanceId}.json`;
+  
+  try {
+    // Find and kill QEMU process
+    exec(`pkill -f "${instanceId}.agent"`, (error, stdout, stderr) => {
+      // Note: pkill returns error if no processes found, but that's OK for us
+      // as it means the instance is already stopped
+      
+      // Update instance status if config exists
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        config.status = 'stopped';
+        config.stoppedAt = new Date().toISOString();
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      }
+      
+      res.json({ message: 'Instance stopped successfully' });
+    });
+  } catch (error) {
+    console.error('Error stopping instance:', error);
+    res.status(500).json({ error: 'Failed to stop instance' });
+  }
 });
 
 app.delete('/api/instances/:id', (req, res) => {
   const instanceId = req.params.id;
   const diskPath = `/var/lib/idve/instances/${instanceId}.qcow2`;
+  const configPath = `/etc/idve/${instanceId}.json`;
   
   // Remove disk file
   fs.unlink(diskPath, (err) => {
-    if (err) {
+    if (err && err.code !== 'ENOENT') {
       console.error('Error deleting disk:', err);
       return res.status(500).json({ error: 'Failed to delete instance disk' });
     }
-    res.json({ message: 'Instance deleted' });
+    
+    // Remove config file
+    fs.unlink(configPath, (err) => {
+      if (err && err.code !== 'ENOENT') {
+        console.error('Error deleting config:', err);
+        return res.status(500).json({ error: 'Failed to delete instance config' });
+      }
+      
+      res.json({ message: 'Instance deleted successfully' });
+    });
+  });
+});
+
+app.get('/api/instances/:id/status', (req, res) => {
+  const instanceId = req.params.id;
+  
+  // Check if QEMU process is running for this instance
+  exec(`ps aux | grep "${instanceId}.agent" | grep -v grep`, (error, stdout, stderr) => {
+    const isRunning = stdout.trim() !== '';
+    res.json({ 
+      instanceId: instanceId,
+      isRunning: isRunning,
+      status: isRunning ? 'running' : 'stopped'
+    });
   });
 });
 

@@ -191,7 +191,7 @@
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Host/Node</label>
-              <input type="text" id="host" name="host" value="localhost" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" readonly>
+              <input type="text" id="host" name="host" value="idve-08" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" readonly>
             </div>
             <div>
               <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Instance ID</label>
@@ -293,7 +293,8 @@
             <div>
               <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Storage</label>
               <select id="storage-pool" name="storagePool" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
-                <option value="/var/lib/idve/instances">Local Disk Images</option>
+                <option value="">Select Storage Pool</option>
+                <!-- Storage pools will be populated via JS -->
               </select>
             </div>
             <div>
@@ -348,8 +349,8 @@
             <div>
               <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bridge</label>
               <select id="network-bridge" name="networkBridge" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
-                <option value="br0">br0</option>
-                <option value="virbr0">virbr0</option>
+                <option value="">Select Bridge</option>
+                <!-- Bridges will be populated via JS -->
               </select>
             </div>
             <div>
@@ -404,6 +405,73 @@
       </div>
     </div>
   </div>
+
+  <!-- Edit Instance Modal -->
+  <div id="edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-lg font-bold text-slate-900 dark:text-white">Edit Instance</h3>
+        <button onclick="closeEditModal()" class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <form id="edit-instance-form" class="space-y-6">
+        <!-- General Settings -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Host/Node</label>
+            <input type="text" id="edit-host" name="host" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" readonly>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Instance ID</label>
+            <input type="text" id="edit-instance-id" name="instanceId" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" readonly>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Name</label>
+            <input type="text" id="edit-name" name="name" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+          </div>
+        </div>
+
+        <!-- System Configuration -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Memory (MiB)</label>
+            <input type="number" id="edit-memory" name="memory" min="256" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">CPU Sockets</label>
+            <input type="number" id="edit-cpu-sockets" name="cpuSockets" min="1" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">CPU Cores</label>
+            <input type="number" id="edit-cpu-cores" name="cpuCores" min="1" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+          </div>
+        </div>
+
+        <!-- Network Configuration -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bridge</label>
+            <select id="edit-network-bridge" name="networkBridge" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+              <option value="">Select Bridge</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">MAC Address</label>
+            <input type="text" id="edit-mac-address" name="macAddress" placeholder="Auto-generate" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-end gap-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+          <button type="button" onclick="closeEditModal()" class="px-4 py-2 text-sm font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">Cancel</button>
+          <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600">Update Instance</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
 </body>
