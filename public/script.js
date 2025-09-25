@@ -417,8 +417,8 @@ function openConsole(instanceId) {
   fetch(`/api/instances/${instanceId}/vnc`)
   .then(response => response.json())
   .then(data => {
-    // Open noVNC console in a new window
-    const consoleUrl = `/novnc/vnc.html?host=localhost&port=${data.vncPort}&autoconnect=true`;
+    // Open noVNC console in a new window - use direct WebSocket connection
+    const consoleUrl = `/novnc/vnc.html?host=localhost&port=${data.vncPort}&path=&autoconnect=true`;
     window.open(consoleUrl, `console-${instanceId}`, 'width=1024,height=768,scrollbars=no,resizable=yes');
   })
   .catch(error => {

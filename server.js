@@ -15,6 +15,19 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Get VNC port for instance console
+app.get('/api/instances/:id/vnc', (req, res) => {
+  const instanceId = req.params.id;
+  const vncPort = 5900 + parseInt(instanceId.replace(/\D/g, '')) || 5901;
+  const wsPort = 7900 + parseInt(instanceId.replace(/\D/g, '')) || 7901; // WebSocket port
+  res.json({ 
+    instanceId: instanceId,
+    vncPort: vncPort,
+    wsPort: wsPort,
+    vncUrl: `vnc.html?host=localhost&port=${wsPort}&path=&autoconnect=true`
+  });
+});
+
 // Routes
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -292,6 +305,18 @@ app.put('/api/instances/:id/start', (req, res) => {
         
         qemuProcess.unref(); // Allow parent to exit independently
         
+        // Start websockify for VNC proxy (use different port for WebSocket)
+        const wsVncPort = 5900 + parseInt(config.id.replace(/\D/g, '')) || 5901;
+        const wsPort = 7900 + parseInt(config.id.replace(/\D/g, '')) || 7901; // WebSocket port
+        exec(`websockify --daemon ${wsPort} localhost:${wsVncPort}`, (wsError, wsOut, wsStderr) => {
+          if (wsError) {
+            console.error('Warning: Failed to start websockify:', wsError);
+            // Don't fail the VM start if websockify fails
+          } else {
+            console.log(`Started websockify on port ${wsPort} proxying to VNC port ${wsVncPort}`);
+          }
+        });
+        
         // Update instance status
         config.status = 'running';
         config.startedAt = new Date().toISOString();
@@ -315,6 +340,13 @@ app.put('/api/instances/:id/stop', (req, res) => {
     exec(`pkill -f "${instanceId}.agent"`, (error, stdout, stderr) => {
       // Note: pkill returns error if no processes found, but that's OK for us
       // as it means the instance is already stopped
+      
+      // Also kill websockify process for this instance
+      const wsPort = 7900 + parseInt(instanceId.replace(/\D/g, '')) || 7901;
+      exec(`pkill -f "websockify.*${wsPort}"`, (wsError, wsOut, wsStderr) => {
+        // Note: pkill returns error if no processes found, that's OK
+        console.log(`Stopped websockify on port ${wsPort}`);
+      });
       
       // Update instance status if config exists
       if (fs.existsSync(configPath)) {
