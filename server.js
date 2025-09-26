@@ -341,6 +341,11 @@ app.put('/api/instances/:id/start', (req, res) => {
           // Simplified QEMU command that works
           qemuCmd += ` -drive file=${diskPath},if=virtio,format=qcow2`;
           
+          // Add Cloud-Init drive if this is a Cloud-Init instance
+          if (config.cloudInit && config.cloudInitIsoPath) {
+            qemuCmd += ` -drive file=${config.cloudInitIsoPath},if=virtio,format=raw`;
+          }
+          
           // Add CDROM(s) if specified
           const cdroms = config.cdroms || (config.cdrom ? [config.cdrom] : []);
           cdroms.forEach((cdrom, index) => {
@@ -1042,9 +1047,9 @@ app.post('/api/instances/cloudinit', (req, res) => {
         userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: centos\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/centos\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    centos:centos\n  expire: false\n'
       };
       break;
-    case 'debian-13':
+    case 'debian-11':
       osSettings = {
-        image: 'debian-13-generic-amd64.qcow2',
+        image: 'debian-11-genericcloud-amd64.qcow2',
         userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
       };
       break;
@@ -1156,36 +1161,71 @@ app.post('/api/instances/cloudinit', (req, res) => {
   fs.writeFileSync(userDataPath, userData);
   fs.writeFileSync(metaDataPath, metaData);
 
-  // Create disk from base image
-  const baseImagePath = `/var/lib/idve/images/${osSettings.image}`;
+  // Create Cloud-Init ISO
+  const cloudInitIsoPath = `/var/lib/idve/cloudinit/${instanceId}-cloudinit.iso`;
   const instanceDiskPath = `/var/lib/idve/instances/${instanceId}.qcow2`;
-
-  // Ensure instances directory exists
-  if (!fs.existsSync('/var/lib/idve/instances')) {
-    fs.mkdirSync('/var/lib/idve/instances', { recursive: true });
+  
+  // Create temporary directory for ISO contents
+  const isoTempDir = `/tmp/cloudinit-${instanceId}`;
+  if (!fs.existsSync(isoTempDir)) {
+    fs.mkdirSync(isoTempDir, { recursive: true });
   }
-
-  // Copy base image to instance disk
-  exec(`cp ${baseImagePath} ${instanceDiskPath}`, (copyErr) => {
-    if (copyErr) {
-      console.error('Error copying base image:', copyErr);
-      return res.status(500).json({ error: 'Failed to create instance disk' });
-    }
-
-    // Resize disk if requested
-    if (diskResize) {
-      exec(`qemu-img resize ${instanceDiskPath} +10G`, (resizeErr) => {
-        if (resizeErr) {
-          console.error('Error resizing disk:', resizeErr);
-          // Continue anyway, disk resize is optional
+  
+  // Copy user-data and meta-data to ISO directory
+  fs.copyFileSync(userDataPath, `${isoTempDir}/user-data`);
+  fs.copyFileSync(metaDataPath, `${isoTempDir}/meta-data`);
+  
+  // Create Cloud-Init ISO using genisoimage or mkisofs
+  exec(`genisoimage -output ${cloudInitIsoPath} -volid cidata -joliet -rock ${isoTempDir}/`, (isoErr) => {
+    // Clean up temporary directory
+    exec(`rm -rf ${isoTempDir}`, () => {});
+    
+    if (isoErr) {
+      console.error('Error creating Cloud-Init ISO:', isoErr);
+      // Try alternative method with mkisofs
+      exec(`mkisofs -output ${cloudInitIsoPath} -volid cidata -joliet -rock ${isoTempDir}/`, (mkErr) => {
+        if (mkErr) {
+          console.error('Error creating Cloud-Init ISO with mkisofs:', mkErr);
+          return res.status(500).json({ error: 'Failed to create Cloud-Init ISO' });
         }
-
-        createInstanceConfig();
+        createDisk();
       });
     } else {
-      createInstanceConfig();
+      createDisk();
     }
   });
+
+  function createDisk() {
+    // Create disk from base image
+    const baseImagePath = `/var/lib/idve/images/${osSettings.image}`;
+
+    // Ensure instances directory exists
+    if (!fs.existsSync('/var/lib/idve/instances')) {
+      fs.mkdirSync('/var/lib/idve/instances', { recursive: true });
+    }
+
+    // Copy base image to instance disk
+    exec(`cp ${baseImagePath} ${instanceDiskPath}`, (copyErr) => {
+      if (copyErr) {
+        console.error('Error copying base image:', copyErr);
+        return res.status(500).json({ error: 'Failed to create instance disk' });
+      }
+
+      // Resize disk if requested
+      if (diskResize) {
+        exec(`qemu-img resize ${instanceDiskPath} +10G`, (resizeErr) => {
+          if (resizeErr) {
+            console.error('Error resizing disk:', resizeErr);
+            // Continue anyway, disk resize is optional
+          }
+
+          createInstanceConfig();
+        });
+      } else {
+        createInstanceConfig();
+      }
+    });
+  }
 
   function createInstanceConfig() {
     // Create instance configuration
@@ -1198,6 +1238,7 @@ app.post('/api/instances/cloudinit', (req, res) => {
       cloudInit: true,
       userDataPath: userDataPath,
       metaDataPath: metaDataPath,
+      cloudInitIsoPath: cloudInitIsoPath,
       diskPath: instanceDiskPath,
       cpuSockets: 1,
       cpuCores: 2,
