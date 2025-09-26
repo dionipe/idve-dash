@@ -5,6 +5,8 @@
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
   <title>IDVE Dashboard</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-3d@1.0.3"></script>
   <link href="https://fonts.googleapis.com" rel="preconnect"/>
   <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
@@ -125,6 +127,52 @@
               </div>
             </div>
           </div>
+          
+          <!-- Host Resource Monitoring -->
+          <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">CPU Usage</h3>
+              <div class="relative">
+                <canvas id="cpuChart" width="200" height="200"></canvas>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="text-center">
+                    <p class="text-2xl font-bold text-slate-900 dark:text-white" id="cpu-percentage">0%</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Used</p>
+                    <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" id="cpu-details">0 / 100%</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Memory Usage</h3>
+              <div class="relative">
+                <canvas id="memoryChart" width="200" height="200"></canvas>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="text-center">
+                    <p class="text-2xl font-bold text-slate-900 dark:text-white" id="memory-percentage">0%</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Used</p>
+                    <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" id="memory-details">0 MB / 0 MB</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Storage Usage</h3>
+              <div class="relative">
+                <canvas id="storageChart" width="200" height="200"></canvas>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="text-center">
+                    <p class="text-2xl font-bold text-slate-900 dark:text-white" id="storage-percentage">0%</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Used</p>
+                    <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" id="storage-details">0 GB / 0 GB</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <div class="mt-8 rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
             <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Recent Instances</h3>
             <div id="recent-instances" class="space-y-4">

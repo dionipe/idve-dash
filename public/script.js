@@ -285,3 +285,119 @@ function loadDashboard() {
     });
   });
 }
+
+// Initialize everything when page loads
+document.addEventListener('DOMContentLoaded', function() {
+  // Initialize resource monitoring charts
+  initResourceCharts();
+  updateResourceCharts();
+  
+  // Update resource data every 30 seconds
+  setInterval(updateResourceCharts, 30000);
+  
+  // Load initial dashboard data
+  loadDashboard();
+});
+
+// Host Resource Monitoring
+let cpuChart, memoryChart, storageChart;
+
+function initResourceCharts() {
+  const chartOptions = {
+    plugins: {
+      legend: {
+        display: false
+      }
+    },
+    responsive: true,
+    maintainAspectRatio: false
+  };
+
+  // CPU Chart
+  const cpuCtx = document.getElementById('cpuChart').getContext('2d');
+  cpuChart = new Chart(cpuCtx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [0, 100],
+        backgroundColor: ['#137fec', '#e5e7eb'],
+        borderWidth: 0,
+        cutout: '70%'
+      }]
+    },
+    options: chartOptions
+  });
+
+  // Memory Chart
+  const memoryCtx = document.getElementById('memoryChart').getContext('2d');
+  memoryChart = new Chart(memoryCtx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [0, 100],
+        backgroundColor: ['#10b981', '#e5e7eb'],
+        borderWidth: 0,
+        cutout: '70%'
+      }]
+    },
+    options: chartOptions
+  });
+
+  // Storage Chart
+  const storageCtx = document.getElementById('storageChart').getContext('2d');
+  storageChart = new Chart(storageCtx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [0, 100],
+        backgroundColor: ['#f59e0b', '#e5e7eb'],
+        borderWidth: 0,
+        cutout: '70%'
+      }]
+    },
+    options: chartOptions
+  });
+}
+
+function updateResourceCharts() {
+  fetch('/api/host-resources')
+    .then(response => response.json())
+    .then(data => {
+      // Helper function to format bytes
+      function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+      }
+
+      // Update CPU Chart
+      const cpuUsed = Math.round(data.cpu.used);
+      const cpuFree = 100 - cpuUsed;
+      cpuChart.data.datasets[0].data = [cpuUsed, cpuFree];
+      cpuChart.update();
+      document.getElementById('cpu-percentage').textContent = `${cpuUsed}%`;
+      document.getElementById('cpu-details').textContent = `${cpuUsed}% / 100%`;
+
+      // Update Memory Chart
+      const memoryUsedPercent = data.memory.total > 0 ? Math.round((data.memory.used / data.memory.total) * 100) : 0;
+      const memoryFreePercent = 100 - memoryUsedPercent;
+      memoryChart.data.datasets[0].data = [memoryUsedPercent, memoryFreePercent];
+      memoryChart.update();
+      document.getElementById('memory-percentage').textContent = `${memoryUsedPercent}%`;
+      document.getElementById('memory-details').textContent = `${data.memory.used} MB / ${data.memory.total} MB`;
+
+      // Update Storage Chart
+      const storageUsedPercent = data.storage.total > 0 ? Math.round((data.storage.used / data.storage.total) * 100) : 0;
+      const storageFreePercent = 100 - storageUsedPercent;
+      storageChart.data.datasets[0].data = [storageUsedPercent, storageFreePercent];
+      storageChart.update();
+      document.getElementById('storage-percentage').textContent = `${storageUsedPercent}%`;
+      document.getElementById('storage-details').textContent = `${formatBytes(data.storage.used * 1024)} / ${formatBytes(data.storage.total * 1024)}`;
+    })
+    .catch(error => {
+      console.error('Error fetching host resources:', error);
+    });
+}
