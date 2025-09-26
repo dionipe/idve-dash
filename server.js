@@ -11,6 +11,34 @@ const io = socketIo(server);
 
 const PORT = process.env.PORT || 3000;
 
+// Helper function to find available port
+function findAvailablePort(basePort, callback, maxAttempts = 10) {
+  const net = require('net');
+  let attempts = 0;
+  let currentPort = basePort;
+  
+  function checkPort(port) {
+    const server = net.createServer();
+    server.listen(port, '127.0.0.1', () => {
+      server.close(() => callback(null, port));
+    });
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          callback(new Error(`No available ports found after ${maxAttempts} attempts starting from ${basePort}`), null);
+        } else {
+          checkPort(port + 1);
+        }
+      } else {
+        callback(err, null);
+      }
+    });
+  }
+  
+  checkPort(currentPort);
+}
+
 // Middleware
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -55,8 +83,9 @@ app.get('/api/host-resources', (req, res) => {
 // Get VNC port for instance console
 app.get('/api/instances/:id/vnc', (req, res) => {
   const instanceId = req.params.id;
-  const vncPort = 5900 + parseInt(instanceId.replace(/\D/g, '')) || 5901;
-  const wsPort = 7900 + parseInt(instanceId.replace(/\D/g, '')) || 7901; // WebSocket port
+  const instanceNum = parseInt(instanceId.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
+  const vncPort = 5900 + instanceNum;
+  const wsPort = 7900 + instanceNum; // WebSocket port
   
   // Use the actual host from the request instead of hardcoded localhost
   const host = req.headers.host || req.hostname || 'localhost';
@@ -264,17 +293,22 @@ app.put('/api/instances/:id/start', (req, res) => {
       return res.status(404).json({ error: 'Instance not found' });
     }
     
+    // Read instance config first
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    
     // Check if already running
-    exec(`ps aux | grep "qemu-system-x86_64.*-name ${instanceId}" | grep -v grep`, (error, stdout, stderr) => {
+    exec(`ps aux | grep 'qemu-system-x86_64.*-name "${config.name}"' | grep -v grep`, (error, stdout, stderr) => {
       if (stdout.trim() !== '') {
         return res.status(400).json({ error: 'Instance is already running' });
       }
       
-      // Read instance config
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      
       // Build QEMU command
-      let qemuCmd = `qemu-system-x86_64 -enable-kvm -name "${config.name}" -m ${config.memory} -smp sockets=${config.cpuSockets},cores=${config.cpuCores} -cpu host`;
+      let cpuModel = config.cpuType || 'qemu64';
+      // Fallback to qemu64 if host CPU is requested but KVM might not be available
+      if (cpuModel === 'host') {
+        cpuModel = 'qemu64';
+      }
+      let qemuCmd = `qemu-system-x86_64 -enable-kvm -name "${config.name}" -m ${config.memory} -smp sockets=${config.cpuSockets},cores=${config.cpuCores} -cpu ${cpuModel}`;
       
       // Add machine type
       qemuCmd += ` -machine q35`;
@@ -331,8 +365,10 @@ app.put('/api/instances/:id/start', (req, res) => {
           }
           
           // Graphics and display - enable VNC for console access
-          const vncPort = 5900 + parseInt(config.id.replace(/\D/g, '')) || 5901; // Use instance ID to calculate unique VNC port
-          qemuCmd += ` -vnc 0.0.0.0:${vncPort - 5900} -k en-us`;
+          const vncInstanceNum = parseInt(config.id.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
+          const vncPort = 5900 + vncInstanceNum;
+          const vncDisplay = vncPort - 5900; // Convert port to VNC display number
+          qemuCmd += ` -vnc :${vncDisplay} -k en-us`;
           
           // Add QEMU agent
           if (config.qemuAgent) {
@@ -345,7 +381,12 @@ app.put('/api/instances/:id/start', (req, res) => {
           }
           
           // Boot order
-          qemuCmd += cdroms.length > 0 ? ' -boot order=dc' : ' -boot order=c';        console.log(`QEMU command: ${qemuCmd}`);
+          qemuCmd += cdroms.length > 0 ? ' -boot order=dc' : ' -boot order=c';
+          
+          // Daemonize for background execution
+          qemuCmd += ' -daemonize';
+          
+          console.log(`QEMU command: ${qemuCmd}`);
         
         // Start QEMU in background using spawn
         const qemuArgs = qemuCmd.split(' ').slice(1); // Remove 'qemu-system-x86_64' from args
@@ -367,15 +408,26 @@ app.put('/api/instances/:id/start', (req, res) => {
         qemuProcess.unref(); // Allow parent to exit independently
         
         // Start websockify for VNC proxy (use different port for WebSocket)
-        const wsVncPort = 5900 + parseInt(config.id.replace(/\D/g, '')) || 5901;
-        const wsPort = 7900 + parseInt(config.id.replace(/\D/g, '')) || 7901; // WebSocket port
-        exec(`websockify --daemon ${wsPort} localhost:${wsVncPort}`, (wsError, wsOut, wsStderr) => {
-          if (wsError) {
-            console.error('Warning: Failed to start websockify:', wsError);
-            // Don't fail the VM start if websockify fails
-          } else {
-            console.log(`Started websockify on port ${wsPort} proxying to VNC port ${wsVncPort}`);
+        const instanceNum = parseInt(config.id.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
+        const qemuVncPort = 5900 + instanceNum; // Exact VNC port QEMU will use
+        const baseWsPort = 7900 + instanceNum; // WebSocket port
+        
+        // Find available WebSocket port for websockify
+        findAvailablePort(baseWsPort, (wsPortErr, wsPort) => {
+          if (wsPortErr) {
+            console.error('Failed to find available WebSocket port:', wsPortErr);
+            return;
           }
+          
+          // Connect websockify directly to the VNC port QEMU is using
+          exec(`websockify --daemon ${wsPort} localhost:${qemuVncPort}`, (wsError, wsOut, wsStderr) => {
+            if (wsError) {
+              console.error('Warning: Failed to start websockify:', wsError);
+              // Don't fail the VM start if websockify fails
+            } else {
+              console.log(`Started websockify on port ${wsPort} proxying to VNC port ${qemuVncPort}`);
+            }
+          });
         });
         
         // Update instance status
@@ -397,25 +449,32 @@ app.put('/api/instances/:id/stop', (req, res) => {
   const configPath = `/etc/idve/${instanceId}.json`;
   
   try {
-    // Find and kill QEMU process
-    exec(`pkill -f "${instanceId}.agent"`, (error, stdout, stderr) => {
+    // Read instance config to get the instance name
+    if (!fs.existsSync(configPath)) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+    
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const instanceName = config.name;
+    
+    // Find and kill QEMU process using the same logic as status checking
+    exec(`pkill -f 'qemu-system-x86_64.*-name "${instanceName}"'`, (error, stdout, stderr) => {
       // Note: pkill returns error if no processes found, but that's OK for us
       // as it means the instance is already stopped
       
       // Also kill websockify process for this instance
-      const wsPort = 7900 + parseInt(instanceId.replace(/\D/g, '')) || 7901;
-      exec(`pkill -f "websockify.*${wsPort}"`, (wsError, wsOut, wsStderr) => {
+      const instanceNum = parseInt(instanceId.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
+      const wsPort = 7900 + instanceNum;
+      // Kill websockify processes in a range around the expected port
+      exec(`pkill -f "websockify.*${wsPort}" || pkill -f "websockify.*$((wsPort-5))" || pkill -f "websockify.*$((wsPort+5))"`, (wsError, wsOut, wsStderr) => {
         // Note: pkill returns error if no processes found, that's OK
-        console.log(`Stopped websockify on port ${wsPort}`);
+        console.log(`Stopped websockify processes around port ${wsPort}`);
       });
       
-      // Update instance status if config exists
-      if (fs.existsSync(configPath)) {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        config.status = 'stopped';
-        config.stoppedAt = new Date().toISOString();
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      }
+      // Update instance status
+      config.status = 'stopped';
+      config.stoppedAt = new Date().toISOString();
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
       
       res.json({ message: 'Instance stopped successfully' });
     });
@@ -451,22 +510,38 @@ app.delete('/api/instances/:id', (req, res) => {
 
 app.get('/api/instances/:id/status', (req, res) => {
   const instanceId = req.params.id;
+  const configPath = `/etc/idve/${instanceId}.json`;
   
-  // Check if QEMU process is running for this instance
-  exec(`ps aux | grep "${instanceId}.agent" | grep -v grep`, (error, stdout, stderr) => {
-    const isRunning = stdout.trim() !== '';
-    res.json({ 
-      instanceId: instanceId,
-      isRunning: isRunning,
-      status: isRunning ? 'running' : 'stopped'
+  try {
+    // Read instance config to get the instance name
+    if (!fs.existsSync(configPath)) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+    
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const instanceName = config.name;
+    
+    // Check if QEMU process is running for this instance
+    // Use the same logic as in start endpoint: check for qemu-system-x86_64 with instance name
+    exec(`ps aux | grep 'qemu-system-x86_64.*-name "${instanceName}"' | grep -v grep`, (error, stdout, stderr) => {
+      const isRunning = stdout.trim() !== '';
+      res.json({ 
+        instanceId: instanceId,
+        isRunning: isRunning,
+        status: isRunning ? 'running' : 'stopped'
+      });
     });
-  });
+  } catch (error) {
+    console.error('Error checking instance status:', error);
+    res.status(500).json({ error: 'Failed to check instance status' });
+  }
 });
 
 // Get VNC port for instance console
 app.get('/api/instances/:id/vnc', (req, res) => {
   const instanceId = req.params.id;
-  const vncPort = 5900 + parseInt(instanceId.replace(/\D/g, '')) || 5901;
+  const instanceNum = parseInt(instanceId.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
+  const vncPort = 5900 + instanceNum;
   res.json({ 
     instanceId: instanceId,
     vncPort: vncPort,
@@ -932,7 +1007,21 @@ app.post('/api/instances/cloudinit', (req, res) => {
     ipAddress,
     sshKey,
     networkConfig,
-    diskResize
+    diskResize,
+    // Network Configuration
+    bridge,
+    vlanTag,
+    networkModel,
+    // User Configuration
+    username,
+    password,
+    // Domain & DNS
+    domain,
+    dns1,
+    dns2,
+    // IP Configuration
+    ipAddressCIDR,
+    gateway
   } = req.body;
 
   // Generate unique instance ID
@@ -953,9 +1042,9 @@ app.post('/api/instances/cloudinit', (req, res) => {
         userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: centos\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/centos\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    centos:centos\n  expire: false\n'
       };
       break;
-    case 'debian-12':
+    case 'debian-13':
       osSettings = {
-        image: 'debian-12-generic-amd64.qcow2',
+        image: 'debian-13-generic-amd64.qcow2',
         userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
       };
       break;
@@ -985,6 +1074,21 @@ app.post('/api/instances/cloudinit', (req, res) => {
 
   // Create Cloud-Init user-data
   let userData = osSettings.userDataTemplate;
+
+  // Add custom username and password if provided
+  if (username) {
+    // Replace default username in user-data
+    const defaultUser = osSettings.userDataTemplate.match(/name: (\w+)/)[1];
+    userData = userData.replace(new RegExp(`name: ${defaultUser}`, 'g'), `name: ${username}`);
+    userData = userData.replace(new RegExp(`/home/${defaultUser}`, 'g'), `/home/${username}`);
+    userData = userData.replace(new RegExp(`${defaultUser}:${defaultUser}`, 'g'), `${username}:${password || username}`);
+  }
+
+  // Add password if provided
+  if (password) {
+    userData = userData.replace(/ubuntu:ubuntu|centos:centos|debian:debian|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
+  }
+
   if (additionalPackages.length > 0) {
     userData += '\npackages:\n' + additionalPackages.map(pkg => `  - ${pkg}`).join('\n');
   }
@@ -997,9 +1101,44 @@ app.post('/api/instances/cloudinit', (req, res) => {
     userData = userData.replace(/\s*ssh-authorized-keys:[\s\S]*?(?=\n\w|$)/, '');
   }
 
+  // Add domain if provided
+  if (domain) {
+    userData += `\nmanage_etc_hosts: true\n`;
+  }
+
   // Add network configuration if enabled
-  if (networkConfig && ipAddress) {
-    userData += `\nnetwork:\n  version: 2\n  ethernets:\n    ens3:\n      addresses:\n        - ${ipAddress}/24\n      gateway4: 192.168.122.1\n      nameservers:\n        addresses:\n          - 8.8.8.8\n          - 8.8.4.4\n`;
+  if (networkConfig) {
+    let networkConfigStr = `\nnetwork:\n  version: 2\n  ethernets:\n    ens3:\n`;
+
+    // Add IP configuration if provided
+    if (ipAddressCIDR) {
+      networkConfigStr += `      addresses:\n        - ${ipAddressCIDR}\n`;
+    }
+
+    // Add gateway if provided
+    if (gateway) {
+      networkConfigStr += `      gateway4: ${gateway}\n`;
+    }
+
+    // Add DNS servers if provided
+    const dnsServers = [];
+    if (dns1) dnsServers.push(dns1);
+    if (dns2) dnsServers.push(dns2);
+    if (dnsServers.length > 0) {
+      networkConfigStr += `      nameservers:\n        addresses:\n`;
+      dnsServers.forEach(dns => {
+        networkConfigStr += `          - ${dns}\n`;
+      });
+    }
+
+    userData += networkConfigStr;
+  }
+
+  // Add hostname/domain configuration
+  if (domain) {
+    userData += `\nhostname: ${instanceName}.${domain}\n`;
+  } else {
+    userData += `\nhostname: ${instanceName}\n`;
   }
 
   // Save user-data to file
@@ -1064,8 +1203,21 @@ app.post('/api/instances/cloudinit', (req, res) => {
       cpuCores: 2,
       cpuType: 'host',
       memory: 2048,
-      networkBridge: 'virbr0',
-      networkModel: 'virtio',
+      // Network Configuration
+      networkBridge: bridge || 'virbr0',
+      vlanTag: vlanTag || null,
+      networkModel: networkModel || 'virtio',
+      // User Configuration
+      username: username || null,
+      password: password || null,
+      // Domain & DNS
+      domain: domain || null,
+      dns1: dns1 || null,
+      dns2: dns2 || null,
+      // IP Configuration
+      ipAddressCIDR: ipAddressCIDR || null,
+      gateway: gateway || null,
+      // Other settings
       graphics: 'virtio',
       machine: 'q35',
       bios: 'seabios',

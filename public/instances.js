@@ -797,6 +797,7 @@ function showCloudInitModal() {
   document.getElementById('cloudinit-modal').classList.remove('hidden');
   document.getElementById('cloudinit-modal').classList.add('flex');
   populateCloudInitTemplates();
+  populateCloudInitBridges();
 }
 
 function closeCloudInitModal() {
@@ -826,7 +827,52 @@ function populateCloudInitTemplates() {
     .catch(error => {
       console.error('Error loading cloud-init templates:', error);
       // Fallback to static options if API fails
+      const templateSelect = document.getElementById('cloudinit-template');
+      // Clear existing options except the first one
+      while (templateSelect.options.length > 1) {
+        templateSelect.remove(1);
+      }
+      // Add fallback options
+      const fallbackOptions = [
+        { id: 'web-server', name: 'Web Server (LAMP)' },
+        { id: 'development', name: 'Development (Node.js)' },
+        { id: 'database', name: 'Database (PostgreSQL)' },
+        { id: 'custom', name: 'Custom' }
+      ];
+      fallbackOptions.forEach(template => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.name;
+        templateSelect.appendChild(option);
+      });
     });
+}
+
+function populateCloudInitBridges() {
+  fetch('/api/networks')
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('cloudinit-bridge');
+    select.innerHTML = '<option value="virbr0">virbr0 (Default)</option>';
+    data.forEach(network => {
+      if (network.type === 'bridge') {
+        const option = document.createElement('option');
+        option.value = network.name;
+        option.textContent = `${network.name} (${network.ports || 'No interfaces'})`;
+        select.appendChild(option);
+      }
+    });
+  })
+  .catch(error => {
+    console.error('Error loading bridges:', error);
+    // Fallback to default options if API fails
+    const select = document.getElementById('cloudinit-bridge');
+    select.innerHTML = `
+      <option value="virbr0">virbr0 (Default)</option>
+      <option value="br0">br0</option>
+      <option value="br1">br1</option>
+    `;
+  });
 }
 
 function createCloudInitInstance() {
@@ -840,7 +886,21 @@ function createCloudInitInstance() {
     ipAddress: formData.get('ipAddress'),
     sshKey: formData.get('sshKey'),
     networkConfig: formData.get('networkConfig') === 'on',
-    diskResize: formData.get('diskResize') === 'on'
+    diskResize: formData.get('diskResize') === 'on',
+    // Network Configuration
+    bridge: formData.get('bridge'),
+    vlanTag: formData.get('vlanTag'),
+    networkModel: formData.get('networkModel'),
+    // User Configuration
+    username: formData.get('username'),
+    password: formData.get('password'),
+    // Domain & DNS
+    domain: formData.get('domain'),
+    dns1: formData.get('dns1'),
+    dns2: formData.get('dns2'),
+    // IP Configuration
+    ipAddressCIDR: formData.get('ipAddress'),
+    gateway: formData.get('gateway')
   };
 
   // Show loading state
