@@ -123,7 +123,14 @@ function createInstance() {
   const form = document.getElementById('create-instance-form');
   const formData = new FormData(form);
 
+  const instanceId = formData.get('instanceId');
+  if (!instanceId || instanceId.trim() === '') {
+    alert('Instance ID is required');
+    return;
+  }
+
   const instanceData = {
+    instanceId: instanceId.trim(),
     name: formData.get('name'),
     host: formData.get('host'),
     osType: formData.get('osType'),
@@ -292,12 +299,33 @@ function editInstance(instanceId) {
         }, 100);
       }),
       populateEditISOs().then(() => {
-        // Set CDROM value after dropdown is populated
+        // Clear existing additional CD drives
+        const cdContainer = document.getElementById('cd-drives-container');
+        cdContainer.innerHTML = '';
+
+        // Handle multiple CD drives
+        const cdroms = data.cdroms || (data.cdrom ? [data.cdrom] : []);
+
+        // Set first CDROM value
         setTimeout(() => {
           const cdromSelect = document.getElementById('edit-cdrom');
-          if (cdromSelect && data.cdrom) {
-            cdromSelect.value = data.cdrom;
+          if (cdromSelect && cdroms.length > 0) {
+            cdromSelect.value = cdroms[0];
             cdromSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+
+          // Add additional CD drives if any
+          for (let i = 1; i < cdroms.length; i++) {
+            addCdDrive();
+            // Set the value for the newly added drive
+            setTimeout(() => {
+              const additionalDrives = cdContainer.querySelectorAll('select[name^="cdrom-"]');
+              const lastDrive = additionalDrives[additionalDrives.length - 1];
+              if (lastDrive) {
+                lastDrive.value = cdroms[i];
+                lastDrive.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }, 100);
           }
         }, 100);
       })
@@ -322,6 +350,23 @@ function updateInstance() {
   const memoryGB = parseFloat(formData.get('memoryGB')) || 2;
   const memoryMiB = Math.round(memoryGB * 1024);
 
+  // Collect all CD drives
+  const cdroms = [];
+  const primaryCdrom = formData.get('cdrom');
+  if (primaryCdrom) {
+    cdroms.push(primaryCdrom);
+  }
+
+  // Add additional CD drives
+  const cdContainer = document.getElementById('cd-drives-container');
+  const additionalDrives = cdContainer.querySelectorAll('select[name^="cdrom-"]');
+  additionalDrives.forEach(drive => {
+    const value = drive.value;
+    if (value) {
+      cdroms.push(value);
+    }
+  });
+
   const updateData = {
     // Hardware
     cpuType: formData.get('processor') || 'host',
@@ -330,7 +375,7 @@ function updateInstance() {
     graphics: formData.get('graphics') || 'virtio',
     machine: formData.get('machine') || 'pc',
     scsiController: formData.get('scsiController') || 'virtio-scsi-pci',
-    cdrom: formData.get('cdrom') || '',
+    cdroms: cdroms, // Use array instead of single cdrom
     diskSize: formData.get('diskSize') || '20',
     networkBridge: formData.get('networkBridge') || '',
     osType: formData.get('osType') || 'linux',
@@ -678,7 +723,65 @@ function populateEditISOs() {
 }
 
 function addCdDrive() {
-  alert('Add CD/DVD Drive functionality - to be implemented');
+  const container = document.getElementById('cd-drives-container');
+  const driveCount = container.children.length + 1; // +1 because we already have the first drive
+
+  // Create a new CD/DVD drive entry
+  const driveDiv = document.createElement('div');
+  driveDiv.className = 'flex items-center gap-4 p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50 clay-shadow';
+  driveDiv.dataset.driveIndex = driveCount;
+
+  driveDiv.innerHTML = `
+    <div class="flex-1">
+      <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">CD/DVD Drive ${driveCount + 1}</label>
+      <select name="cdrom-${driveCount}" class="w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-2 clay-shadow">
+        <option value="">None</option>
+        <!-- ISOs will be populated via JS -->
+      </select>
+    </div>
+    <button type="button" onclick="removeCdDrive(this)" class="mt-6 p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+      <span class="material-symbols-outlined">delete</span>
+    </button>
+  `;
+
+  container.appendChild(driveDiv);
+
+  // Populate the new select with ISOs
+  populateDriveISOs(driveDiv.querySelector('select'));
+}
+
+function removeCdDrive(button) {
+  const driveDiv = button.closest('[data-drive-index]');
+  driveDiv.remove();
+
+  // Renumber remaining drives
+  const container = document.getElementById('cd-drives-container');
+  Array.from(container.children).forEach((drive, index) => {
+    const label = drive.querySelector('label');
+    const select = drive.querySelector('select');
+    if (label && select) {
+      label.textContent = `CD/DVD Drive ${index + 2}`; // +2 because first drive is "CD/DVD Drive" (index 0)
+      select.name = `cdrom-${index + 1}`; // +1 because first drive is "cdrom" (no suffix)
+      drive.dataset.driveIndex = index + 1;
+    }
+  });
+}
+
+function populateDriveISOs(selectElement) {
+  fetch('/api/isos')
+  .then(response => response.json())
+  .then(data => {
+    selectElement.innerHTML = '<option value="">None</option>';
+    data.forEach(iso => {
+      const option = document.createElement('option');
+      option.value = `/var/lib/idve/isos/${iso}`;
+      option.textContent = iso;
+      selectElement.appendChild(option);
+    });
+  })
+  .catch(error => {
+    console.error('Error loading ISOs:', error);
+  });
 }
 
 function addHardDisk() {

@@ -80,11 +80,14 @@ app.get('/api/instances/:id', (req, res) => {
 
 app.post('/api/instances', (req, res) => {
   const {
-    name, instanceId, host, osType, cdrom, graphics, machine, bios, scsiController,
+    name, instanceId, host, osType, cdrom, cdroms, graphics, machine, bios, scsiController,
     addTpm, qemuAgent, diskBus, diskScsiController, storagePool, diskSize,
     cpuSockets, cpuCores, cpuType, memory, balloonDevice, networkBridge,
     vlanTag, networkModel, macAddress, startAfterCreate
   } = req.body;
+
+  // Handle both single cdrom and cdroms array for backward compatibility
+  const allCdroms = cdroms || (cdrom ? [cdrom] : []);
 
   // Build QEMU command with all parameters
   let qemuCmd = `qemu-system-x86_64 -name ${name} -m ${memory} -smp sockets=${cpuSockets},cores=${cpuCores} -cpu ${cpuType}`;
@@ -101,10 +104,12 @@ app.post('/api/instances', (req, res) => {
   const diskPath = `${storagePool}/${name}.qcow2`;
   qemuCmd += ` -drive file=${diskPath},if=${diskBus === 'virtio' ? 'virtio' : diskBus},format=qcow2`;
 
-  // Add CDROM if specified
-  if (cdrom) {
-    qemuCmd += ` -cdrom ${cdrom}`;
-  }
+  // Add CDROM(s) if specified
+  allCdroms.forEach((cdromPath) => {
+    if (cdromPath) {
+      qemuCmd += ` -cdrom ${cdromPath}`;
+    }
+  });
 
   // Add network
   let netCmd = ` -net nic,model=${networkModel}`;
@@ -141,7 +146,7 @@ app.post('/api/instances', (req, res) => {
   }
 
   // Boot order
-  qemuCmd += cdrom ? ' -boot order=dc' : ' -boot order=c';
+  qemuCmd += allCdroms.length > 0 ? ' -boot order=dc' : ' -boot order=c';
 
       // Save instance configuration as JSON
     const instanceConfig = {
@@ -149,7 +154,7 @@ app.post('/api/instances', (req, res) => {
       name,
       host,
       osType,
-      cdrom,
+      cdroms: allCdroms, // Store as array
       graphics,
       machine,
       bios,
@@ -265,13 +270,28 @@ app.put('/api/instances/:id/start', (req, res) => {
           // Simplified QEMU command that works
           qemuCmd += ` -drive file=${diskPath},if=virtio,format=qcow2`;
           
-          // Add CDROM if specified
-          if (config.cdrom) {
-            qemuCmd += ` -cdrom ${config.cdrom}`;
-          }
+          // Add CDROM(s) if specified
+          const cdroms = config.cdroms || (config.cdrom ? [config.cdrom] : []);
+          cdroms.forEach((cdrom, index) => {
+            if (cdrom) {
+              qemuCmd += ` -cdrom ${cdrom}`;
+            }
+          });
           
-          // Simplified network - use user networking instead of bridge for now
-          qemuCmd += ` -net nic,model=virtio -net user`;
+          // Add network using bridge from config
+          if (config.networkBridge) {
+            qemuCmd += ` -net nic,model=${config.networkModel || 'virtio'}`;
+            if (config.macAddress) {
+              qemuCmd += `,macaddr=${config.macAddress}`;
+            }
+            qemuCmd += ` -net bridge,br=${config.networkBridge}`;
+            if (config.vlanTag) {
+              qemuCmd += `,vlan=${config.vlanTag}`;
+            }
+          } else {
+            // Fallback to user networking if no bridge configured
+            qemuCmd += ` -net nic,model=virtio -net user`;
+          }
           
           // Graphics and display - enable VNC for console access
           const vncPort = 5900 + parseInt(config.id.replace(/\D/g, '')) || 5901; // Use instance ID to calculate unique VNC port
@@ -288,7 +308,7 @@ app.put('/api/instances/:id/start', (req, res) => {
           }
           
           // Boot order
-          qemuCmd += config.cdrom ? ' -boot order=dc' : ' -boot order=c';        console.log(`QEMU command: ${qemuCmd}`);
+          qemuCmd += cdroms.length > 0 ? ' -boot order=dc' : ' -boot order=c';        console.log(`QEMU command: ${qemuCmd}`);
         
         // Start QEMU in background using spawn
         const qemuArgs = qemuCmd.split(' ').slice(1); // Remove 'qemu-system-x86_64' from args
