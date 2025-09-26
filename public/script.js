@@ -63,11 +63,7 @@ function showStep(step) {
   });
   
   document.getElementById('progress-bar').style.width = ((step + 1) / (totalSteps + 1)) * 100 + '%';
-  
-  document.getElementById('prev-btn').disabled = step === 0;
-  document.getElementById('next-btn').classList.toggle('hidden', step === totalSteps);
-  document.getElementById('create-btn').classList.toggle('hidden', step !== totalSteps);
-  
+    
   if (step === totalSteps) {
     generateSummary();
   }
@@ -195,75 +191,12 @@ function generateSummary() {
   });
 }
 
-document.getElementById('next-btn').addEventListener('click', nextStep);
-document.getElementById('prev-btn').addEventListener('click', prevStep);
-document.getElementById('create-btn').addEventListener('click', function() {
-  document.getElementById('create-instance-form').dispatchEvent(new Event('submit'));
-});
-
-document.getElementById('create-instance-form').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const formData = new FormData(this);
-  const data = Object.fromEntries(formData);
-  const instanceId = this.dataset.instanceId;
-  
-  const method = instanceId ? 'PUT' : 'POST';
-  const url = instanceId ? `/api/instances/${instanceId}` : '/api/instances';
-  
-  fetch(url, {
-    method: method,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  })
-  .then(response => response.json())
-  .then(data => {
-    const action = instanceId ? 'updated' : 'created';
-    alert(`Instance ${action} successfully!`);
-    
-    // Reset form and modal state
-    this.reset();
-    delete this.dataset.instanceId;
-    document.getElementById('create-btn').textContent = 'Create Instance';
-    
-    closeModal();
-    loadInstances();
-    loadDashboard();
-  })
-  .catch(error => console.error('Error:', error));
-});
-
-document.getElementById('edit-instance-form').addEventListener('submit', function(e) {
-  e.preventDefault();
-  const formData = new FormData(this);
-  const data = Object.fromEntries(formData);
-  const instanceId = this.dataset.instanceId;
-  
-  fetch(`/api/instances/${instanceId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  })
-  .then(response => response.json())
-  .then(data => {
-    alert('Instance updated successfully!');
-    
-    // Reset form and close modal
-    this.reset();
-    delete this.dataset.instanceId;
-    
-    closeEditModal();
-    loadInstances();
-    loadDashboard();
-  })
-  .catch(error => console.error('Error:', error));
-});
-
 function loadInstances() {
   fetch('/api/instances')
   .then(response => response.json())
   .then(data => {
-    const list = document.getElementById('instances-list');
-    list.innerHTML = '';
+    // const list = document.getElementById('instances-list');
+    // list.innerHTML = '';
     
     // Check status for all instances
     const statusPromises = data.map(instance => 
@@ -301,7 +234,7 @@ function loadInstances() {
             <button onclick="deleteInstance('${instance.id}')" class="rounded-lg bg-red-500 px-3 py-2 font-semibold text-white transition hover:bg-red-600">Delete</button>
           </div>
         `;
-        list.appendChild(card);
+        // list.appendChild(card);
       });
     });
   });
@@ -351,173 +284,4 @@ function loadDashboard() {
       });
     });
   });
-}
-
-function loadImages() {
-  fetch('/api/images')
-  .then(response => response.json())
-  .then(data => {
-    const list = document.getElementById('templates-list');
-    list.innerHTML = '';
-    data.forEach(image => {
-      const card = document.createElement('div');
-      card.className = 'rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6';
-      card.innerHTML = `
-        <div class="flex items-center gap-4 mb-4">
-          <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
-            <span class="material-symbols-outlined">image</span>
-          </div>
-          <div>
-            <p class="font-semibold text-slate-900 dark:text-white">${image}</p>
-            <p class="text-sm text-slate-500 dark:text-slate-400">CloudInit Template</p>
-          </div>
-        </div>
-        <button onclick="selectImage('${image}', 'cloudinit')" class="w-full rounded-lg bg-primary py-2 font-semibold text-white transition hover:bg-primary/90">Use Template</button>
-      `;
-      list.appendChild(card);
-    });
-  });
-}
-
-function loadIsos() {
-  fetch('/api/isos')
-  .then(response => response.json())
-  .then(data => {
-    const list = document.getElementById('isos-list');
-    list.innerHTML = '';
-    data.forEach(iso => {
-      const card = document.createElement('div');
-      card.className = 'rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6';
-      card.innerHTML = `
-        <div class="flex items-center gap-4 mb-4">
-          <div class="flex h-12 w-12 items-center justify-center rounded-lg bg-yellow-500/20 text-yellow-500">
-            <span class="material-symbols-outlined">disc_full</span>
-          </div>
-          <div>
-            <p class="font-semibold text-slate-900 dark:text-white">${iso}</p>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Custom ISO</p>
-          </div>
-        </div>
-        <button onclick="selectImage('${iso}', 'iso')" class="w-full rounded-lg bg-primary py-2 font-semibold text-white transition hover:bg-primary/90">Use ISO</button>
-      `;
-      list.appendChild(card);
-    });
-  });
-}
-
-function selectImage(path, type) {
-  document.getElementById('iso').value = path;
-  document.getElementById('type').value = type;
-  showCreateInstanceModal();
-}
-
-// Instance management functions
-function openConsole(instanceId) {
-  // Get VNC information for the instance
-  fetch(`/api/instances/${instanceId}/vnc`)
-  .then(response => response.json())
-  .then(data => {
-    // Open noVNC console in a new window - use WebSocket port for websockify connection
-    const consoleUrl = `/novnc/vnc.html?host=localhost&port=${data.wsPort}&path=&autoconnect=true`;
-    window.open(consoleUrl, `console-${instanceId}`, 'width=1024,height=768,scrollbars=no,resizable=yes');
-  })
-  .catch(error => {
-    console.error('Error opening console:', error);
-    alert(`Failed to open console for ${instanceId}: ${error.message}`);
-  });
-}
-
-function editInstance(instanceId) {
-  fetch(`/api/instances/${instanceId}`)
-  .then(response => response.json())
-  .then(data => {
-    // Mapping between JSON properties and HTML element IDs
-    const fieldMapping = {
-      instanceId: 'edit-instance-id',
-      name: 'edit-name',
-      host: 'edit-host',
-      memory: 'edit-memory',
-      cpuSockets: 'edit-cpu-sockets',
-      cpuCores: 'edit-cpu-cores',
-      networkBridge: 'edit-network-bridge',
-      macAddress: 'edit-mac-address'
-    };
-    
-    // Populate form with existing data
-    Object.keys(data).forEach(key => {
-      const elementId = fieldMapping[key];
-      if (elementId) {
-        const element = document.getElementById(elementId);
-        if (element) {
-          element.value = data[key];
-        }
-      }
-    });
-    
-    // Store the instance ID for update operation
-    document.getElementById('edit-instance-form').dataset.instanceId = instanceId;
-    
-    // Show edit modal
-    showEditModal();
-  })
-  .catch(error => console.error('Error loading instance:', error));
-}
-
-function stopInstance(instanceId) {
-  if (confirm(`Are you sure you want to stop instance ${instanceId}?`)) {
-    fetch(`/api/instances/${instanceId}/stop`, {
-      method: 'PUT'
-    })
-    .then(response => response.json())
-    .then(data => {
-      alert('Instance stopped successfully!');
-      loadInstances();
-      loadDashboard();
-    })
-    .catch(error => console.error('Error:', error));
-  }
-}
-
-function startInstance(instanceId) {
-  fetch(`/api/instances/${instanceId}/start`, {
-    method: 'PUT'
-  })
-  .then(response => response.json())
-  .then(data => {
-    alert('Instance started successfully!');
-    loadInstances();
-    loadDashboard();
-  })
-  .catch(error => console.error('Error:', error));
-}
-
-function deleteInstance(instanceId) {
-  if (confirm(`Are you sure you want to delete instance ${instanceId}? This action cannot be undone.`)) {
-    fetch(`/api/instances/${instanceId}`, {
-      method: 'DELETE'
-    })
-    .then(response => response.json())
-    .then(data => {
-      alert('Instance deleted successfully!');
-      loadInstances();
-      loadDashboard();
-    })
-    .catch(error => console.error('Error:', error));
-  }
-}
-
-// Load initial data
-loadInstances();
-loadDashboard();
-
-// Check URL params for image selection
-const urlParams = new URLSearchParams(window.location.search);
-const image = urlParams.get('image');
-const type = urlParams.get('type');
-if (image && type) {
-  document.getElementById('iso').value = image;
-  document.getElementById('type').value = type;
-  showCreateInstanceModal();
-  // Clear URL
-  window.history.replaceState({}, document.title, "/");
 }
