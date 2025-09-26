@@ -290,17 +290,25 @@ function loadDashboard() {
 document.addEventListener('DOMContentLoaded', function() {
   // Initialize resource monitoring charts
   initResourceCharts();
+  initNetworkTrafficChart();
   updateResourceCharts();
+  updateNetworkTrafficChart();
   
   // Update resource data every 30 seconds
   setInterval(updateResourceCharts, 30000);
+  
+  // Update network traffic data every 5 seconds
+  setInterval(updateNetworkTrafficChart, 5000);
   
   // Load initial dashboard data
   loadDashboard();
 });
 
 // Host Resource Monitoring
-let cpuChart, memoryChart, storageChart;
+let cpuChart, memoryChart, storageChart, networkTrafficChart;
+let networkTrafficData = { rx: [], tx: [], timestamps: [] };
+let selectedInterface = 'all';
+let timeRange = '1h';
 
 function initResourceCharts() {
   const chartOptions = {
@@ -401,3 +409,204 @@ function updateResourceCharts() {
       console.error('Error fetching host resources:', error);
     });
 }
+
+// Network Traffic Monitoring
+function initNetworkTrafficChart() {
+  const ctx = document.getElementById('networkTrafficChart').getContext('2d');
+  
+  networkTrafficChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Receive (RX)',
+        data: [],
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 4
+      }, {
+        label: 'Transmit (TX)',
+        data: [],
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        fill: true,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          display: false
+        },
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: 'x'
+          },
+          zoom: {
+            wheel: {
+              enabled: true
+            },
+            pinch: {
+              enabled: true
+            },
+            mode: 'x'
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const value = context.parsed.y;
+              return context.dataset.label + ': ' + formatNetworkSpeed(value);
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'time',
+          time: {
+            displayFormats: {
+              minute: 'HH:mm',
+              hour: 'HH:mm'
+            }
+          },
+          grid: {
+            display: false
+          }
+        },
+        y: {
+          beginAtZero: true,
+          grid: {
+            color: 'rgba(0, 0, 0, 0.1)'
+          },
+          ticks: {
+            callback: function(value) {
+              return formatNetworkSpeed(value);
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function updateNetworkTrafficChart() {
+  fetch('/api/network-traffic')
+    .then(response => response.json())
+    .then(data => {
+      // Update interface selector
+      updateInterfaceSelector(data.interfaces);
+      
+      // Get data for selected interface
+      let rxData = [];
+      let txData = [];
+      let timestamps = [];
+      
+      if (selectedInterface === 'all') {
+        // Use totals for all interfaces
+        rxData = data.history[selectedInterface]?.map(point => point.rxRate) || [];
+        txData = data.history[selectedInterface]?.map(point => point.txRate) || [];
+        timestamps = data.history[selectedInterface]?.map(point => point.timestamp) || [];
+      } else if (data.history[selectedInterface]) {
+        rxData = data.history[selectedInterface].map(point => point.rxRate);
+        txData = data.history[selectedInterface].map(point => point.txRate);
+        timestamps = data.history[selectedInterface].map(point => point.timestamp);
+      }
+      
+      // Filter data based on time range
+      const now = new Date();
+      const timeRangeMs = getTimeRangeMs(timeRange);
+      const cutoffTime = new Date(now.getTime() - timeRangeMs);
+      
+      const filteredData = timestamps
+        .map((timestamp, index) => ({
+          timestamp: new Date(timestamp),
+          rx: rxData[index] || 0,
+          tx: txData[index] || 0
+        }))
+        .filter(point => point.timestamp >= cutoffTime);
+      
+      // Update chart data
+      networkTrafficChart.data.labels = filteredData.map(point => point.timestamp);
+      networkTrafficChart.data.datasets[0].data = filteredData.map(point => point.rx);
+      networkTrafficChart.data.datasets[1].data = filteredData.map(point => point.tx);
+      networkTrafficChart.update();
+      
+      // Update current stats
+      const currentRx = data.totals?.rxRate || 0;
+      const currentTx = data.totals?.txRate || 0;
+      document.getElementById('network-stats').textContent = 
+        `RX: ${formatNetworkSpeed(currentRx)} | TX: ${formatNetworkSpeed(currentTx)}`;
+    })
+    .catch(error => {
+      console.error('Error fetching network traffic:', error);
+    });
+}
+
+function updateInterfaceSelector(interfaces) {
+  const select = document.getElementById('network-interface-select');
+  const currentValue = select.value;
+  
+  // Clear existing options except "All Interfaces"
+  select.innerHTML = '<option value="all">All Interfaces</option>';
+  
+  // Add interface options
+  Object.keys(interfaces).forEach(interfaceName => {
+    const option = document.createElement('option');
+    option.value = interfaceName;
+    option.textContent = interfaceName;
+    select.appendChild(option);
+  });
+  
+  // Restore selected value if it still exists
+  if (currentValue && (currentValue === 'all' || interfaces[currentValue])) {
+    select.value = currentValue;
+  } else {
+    selectedInterface = 'all';
+  }
+}
+
+function formatNetworkSpeed(bytesPerSecond) {
+  if (bytesPerSecond === 0) return '0 B/s';
+  const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+  const k = 1024;
+  const i = Math.floor(Math.log(bytesPerSecond) / Math.log(k));
+  return parseFloat((bytesPerSecond / Math.pow(k, i)).toFixed(2)) + ' ' + units[i];
+}
+
+function getTimeRangeMs(range) {
+  const ranges = {
+    '5m': 5 * 60 * 1000,
+    '15m': 15 * 60 * 1000,
+    '30m': 30 * 60 * 1000,
+    '1h': 60 * 60 * 1000
+  };
+  return ranges[range] || ranges['1h'];
+}
+
+// Event listeners for network traffic controls
+document.getElementById('network-interface-select')?.addEventListener('change', function(e) {
+  selectedInterface = e.target.value;
+  updateNetworkTrafficChart();
+});
+
+document.getElementById('time-range-select')?.addEventListener('change', function(e) {
+  timeRange = e.target.value;
+  updateNetworkTrafficChart();
+});
+
+document.getElementById('reset-zoom-btn')?.addEventListener('click', function() {
+  networkTrafficChart.resetZoom();
+});

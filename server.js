@@ -79,6 +79,102 @@ app.get('/api/host-resources', (req, res) => {
   });
 });
 
+// API endpoint for network traffic monitoring
+let networkTrafficHistory = {};
+let lastNetworkStats = {};
+
+app.get('/api/network-traffic', (req, res) => {
+  // Get network interface statistics
+  exec('cat /proc/net/dev', (error, stdout, stderr) => {
+    if (error) {
+      console.error('Error getting network stats:', error);
+      return res.status(500).json({ error: 'Failed to get network statistics' });
+    }
+
+    try {
+      const lines = stdout.trim().split('\n').slice(2); // Skip header lines
+      const interfaces = {};
+      const currentTime = new Date().toISOString();
+
+      lines.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        const interfaceName = parts[0].replace(':', '');
+        
+        // Skip loopback and virtual interfaces
+        if (interfaceName === 'lo' || interfaceName.includes(':')) {
+          return;
+        }
+
+        const rxBytes = parseInt(parts[1]); // Receive bytes
+        const txBytes = parseInt(parts[9]); // Transmit bytes
+
+        // Calculate rates if we have previous data
+        let rxRate = 0;
+        let txRate = 0;
+        
+        if (lastNetworkStats[interfaceName]) {
+          const timeDiff = (new Date(currentTime) - new Date(lastNetworkStats[interfaceName].timestamp)) / 1000;
+          if (timeDiff > 0) {
+            rxRate = Math.max(0, (rxBytes - lastNetworkStats[interfaceName].rxBytes) / timeDiff);
+            txRate = Math.max(0, (txBytes - lastNetworkStats[interfaceName].txBytes) / timeDiff);
+          }
+        }
+
+        interfaces[interfaceName] = {
+          rxBytes: rxBytes,
+          txBytes: txBytes,
+          rxRate: rxRate,
+          txRate: txRate,
+          timestamp: currentTime
+        };
+
+        // Update last stats
+        lastNetworkStats[interfaceName] = {
+          rxBytes: rxBytes,
+          txBytes: txBytes,
+          timestamp: currentTime
+        };
+      });
+
+      // Update history for each interface (keep 1 hour of data at 5-second intervals = 720 points)
+      Object.keys(interfaces).forEach(interfaceName => {
+        if (!networkTrafficHistory[interfaceName]) {
+          networkTrafficHistory[interfaceName] = [];
+        }
+
+        networkTrafficHistory[interfaceName].push({
+          timestamp: currentTime,
+          rxRate: interfaces[interfaceName].rxRate,
+          txRate: interfaces[interfaceName].txRate
+        });
+
+        // Keep only last 720 points (1 hour at 5-second intervals)
+        if (networkTrafficHistory[interfaceName].length > 720) {
+          networkTrafficHistory[interfaceName] = networkTrafficHistory[interfaceName].slice(-720);
+        }
+      });
+
+      // Calculate totals
+      const totals = Object.values(interfaces).reduce(
+        (acc, iface) => ({
+          rxRate: acc.rxRate + iface.rxRate,
+          txRate: acc.txRate + iface.txRate
+        }),
+        { rxRate: 0, txRate: 0 }
+      );
+
+      res.json({
+        interfaces: interfaces,
+        totals: totals,
+        history: networkTrafficHistory
+      });
+    } catch (e) {
+      console.error('Error parsing network data:', e);
+      res.status(500).json({ error: 'Failed to parse network data' });
+    }
+  });
+});
+
 // API routes for storages
 // Get VNC port for instance console
 app.get('/api/instances/:id/vnc', (req, res) => {
@@ -1050,6 +1146,12 @@ app.post('/api/instances/cloudinit', (req, res) => {
     case 'debian-11':
       osSettings = {
         image: 'debian-11-genericcloud-amd64.qcow2',
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
+      };
+      break;
+    case 'debian-13':
+      osSettings = {
+        image: 'debian-13-generic-amd64.qcow2',
         userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
       };
       break;

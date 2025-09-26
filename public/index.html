@@ -6,7 +6,9 @@
   <title>IDVE Dashboard</title>
   <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-3d@1.0.3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
   <link href="https://fonts.googleapis.com" rel="preconnect"/>
   <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
@@ -172,6 +174,46 @@
                     <p class="text-xs text-slate-400 dark:text-slate-500 mt-1" id="storage-details">0 GB / 0 GB</p>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Network Traffic Chart -->
+          <div class="mt-8 rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-bold text-slate-900 dark:text-white">Network Traffic</h3>
+              <div class="flex items-center gap-2">
+                <select id="network-interface-select" class="text-sm bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1">
+                  <option value="all">All Interfaces</option>
+                </select>
+                <select id="time-range-select" class="text-sm bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded px-2 py-1">
+                  <option value="1h">1 Hour</option>
+                  <option value="30m">30 Minutes</option>
+                  <option value="15m">15 Minutes</option>
+                  <option value="5m">5 Minutes</option>
+                </select>
+                <button id="reset-zoom-btn" class="text-sm bg-primary text-white px-3 py-1 rounded hover:bg-primary/90">Reset Zoom</button>
+              </div>
+            </div>
+            <div class="relative">
+              <canvas id="networkTrafficChart" width="800" height="300"></canvas>
+              <div class="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded" id="network-stats">
+                RX: 0 B/s | TX: 0 B/s
+              </div>
+            </div>
+            <div class="mt-4 flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-1">
+                  <div class="w-3 h-3 bg-blue-500 rounded"></div>
+                  <span>Receive (RX)</span>
+                </div>
+                <div class="flex items-center gap-1">
+                  <div class="w-3 h-3 bg-green-500 rounded"></div>
+                  <span>Transmit (TX)</span>
+                </div>
+              </div>
+              <div class="text-xs">
+                Updates every 5 seconds • Data retained for 1 hour
               </div>
             </div>
           </div>
