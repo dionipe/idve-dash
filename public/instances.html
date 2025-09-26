@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>Instances - IDVE Dashboard</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#137fec",
+            "background-light": "#f6f7f8",
+            "background-dark": "#101922",
+          },
+          fontFamily: {
+            display: ["Space Grotesk"],
+          },
+          borderRadius: { DEFAULT: "0.5rem", lg: "1rem", xl: "1.5rem", full: "9999px" },
+        },
+      },
+    };
+  </script>
+  <style>
+    .clay-shadow {
+      box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.2);
+    }
+    .clay-shadow-inset {
+      box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    .dark .clay-shadow {
+      box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.5);
+    }
+    .dark .clay-shadow-inset {
+      box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.5);
+    }
+    .floating-label {
+      position: absolute;
+      top: 50%;
+      left: 1rem;
+      transform: translateY(-50%);
+      transition: all 0.2s ease-out;
+      pointer-events: none;
+      color: #a0aec0;
+    }
+    .form-input:focus ~ .floating-label,
+    .form-input:not(:placeholder-shown) ~ .floating-label {
+      top: 0.75rem;
+      font-size: 0.75rem;
+      color: #137fec;
+    }
+  </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200">
+  <div class="flex h-screen flex-col">
+    <header class="flex items-center justify-between border-b border-slate-200/10 px-6 py-3">
+      <div class="flex items-center gap-6">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-primary text-3xl"> cloud_queue </span>
+          <h1 class="font-bold text-lg text-slate-900 dark:text-white">IDVE</h1>
+        </div>
+        <nav class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/">Dashboard</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/instances.html">Instances</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/images.html">Images</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/networks.html">Networks</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/storages.html">Storages</a>
+        </nav>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="relative hidden md:block">
+          <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"> search </span>
+          <input class="w-48 rounded-full border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 pl-10 pr-4 text-sm focus:border-primary focus:ring-primary" placeholder="Search instances..." type="text"/>
+        </div>
+        <button class="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined"> notifications </span>
+          <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary"></span>
+        </button>
+        <img alt="User avatar" class="h-9 w-9 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB98xLjzGQ3eawNaN7rlsl7olntzdPZngTqZ6SBBwpjQvb-5hn-AAbeydp7rYxilpBFCgcQ09SstAGAEKywOjcWCQFrtlO9TAmOxqkr_GWpRNmlA5RwprLELug8A8rbmPLuSBphGZBmEGaJoYHqOyjQ57vVDY9NWeEYo5zoknLfuNuwaZoDS4Kk1QYa3sBAOkMH9W4J3zWD_PhQudxDbSQIugGxiTUPTgv-9C_M0kbwPqUiv_CK231ttNQfK5SPA60BetjzroTVJ_s"/>
+      </div>
+    </header>
+    <main class="flex-1 overflow-y-auto p-6 lg:p-8">
+      <div class="mx-auto max-w-7xl">
+        <div class="mb-6 flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Instances</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Manage your virtual machine instances.</p>
+          </div>
+          <button onclick="showCreateInstanceModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
+            <span class="material-symbols-outlined mr-2">add</span>
+            Create Instance
+          </button>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-slate-500 dark:text-slate-400">Total Instances</p>
+                <p class="text-2xl font-bold text-slate-900 dark:text-white" id="total-instances">0</p>
+              </div>
+              <span class="material-symbols-outlined text-3xl text-slate-400">dns</span>
+            </div>
+          </div>
+          <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-slate-500 dark:text-slate-400">Running</p>
+                <p class="text-2xl font-bold text-green-600 dark:text-green-400" id="running-instances">0</p>
+              </div>
+              <span class="material-symbols-outlined text-3xl text-green-500">play_circle</span>
+            </div>
+          </div>
+          <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-slate-500 dark:text-slate-400">Stopped</p>
+                <p class="text-2xl font-bold text-red-600 dark:text-red-400" id="stopped-instances">0</p>
+              </div>
+              <span class="material-symbols-outlined text-3xl text-red-500">stop_circle</span>
+            </div>
+          </div>
+          <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-slate-500 dark:text-slate-400">CPU Usage</p>
+                <p class="text-2xl font-bold text-blue-600 dark:text-blue-400" id="cpu-usage">0%</p>
+              </div>
+              <span class="material-symbols-outlined text-3xl text-blue-500">memory</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instances List -->
+        <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+          <div class="mb-4 flex items-center justify-between">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Virtual Machines / Instances</h3>
+            <div class="flex gap-2">
+              <button onclick="loadInstances()" class="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800">
+                <span class="material-symbols-outlined mr-1">refresh</span>
+                Refresh
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table id="instances-table" class="w-full text-sm">
+              <thead class="bg-slate-50 dark:bg-slate-800/50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">ID</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Name</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">IP Address</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Host</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="instances-tbody" class="divide-y divide-slate-200 dark:divide-slate-700">
+                <!-- Instances will be loaded here via Ajax -->
+              </tbody>
+            </table>
+            <div id="loading-indicator" class="text-center py-8 text-slate-500 dark:text-slate-400">
+              <span class="material-symbols-outlined animate-spin mr-2">refresh</span>
+              Loading instances...
+            </div>
+            <div id="no-instances" class="text-center py-8 text-slate-500 dark:text-slate-400 hidden">
+              <span class="material-symbols-outlined text-4xl mb-2">dns</span>
+              <p>No instances found</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Instance Modal -->
+  <div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+      <div class="mb-6 flex items-center justify-between">
+        <h3 class="text-xl font-bold text-slate-900 dark:text-white">Create New Instance</h3>
+        <button onclick="closeModal()" class="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <form id="create-instance-form">
+        <!-- Step 1: General -->
+        <div id="step-general" class="step active">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">General Settings</h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Host/Node</label>
+              <input type="text" id="host" name="host" value="idve-08" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" readonly>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Instance ID</label>
+              <input type="text" id="instance-id" name="instanceId" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Name</label>
+              <input type="text" id="name" name="name" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: OS -->
+        <div id="step-os" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Operating System</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Use CD (Disc Image file/ISO)</label>
+              <select id="cdrom" name="cdrom" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="">None</option>
+                <!-- ISOs will be populated via JS -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Guest OS</label>
+              <select id="os-type" name="osType" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="linux">Linux</option>
+                <option value="windows">Windows</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: System -->
+        <div id="step-system" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">System Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Graphic Card</label>
+              <select id="graphics" name="graphics" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="qxl">QXL</option>
+                <option value="virtio">VirtIO</option>
+                <option value="cirrus">Cirrus</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Machine</label>
+              <select id="machine" name="machine" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="pc">PC</option>
+                <option value="q35">Q35</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">BIOS</label>
+              <select id="bios" name="bios" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="seabios">SeaBIOS</option>
+                <option value="ovmf">OVMF</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">SCSI Controller</label>
+              <select id="scsi-controller" name="scsiController" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="virtio-scsi-pci">VirtIO SCSI PCI</option>
+                <option value="lsi53c895a">LSI 53C895A</option>
+              </select>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="add-tpm" name="addTpm" class="mr-2">
+              <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Add TPM</label>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="qemu-agent" name="qemuAgent" class="mr-2" checked>
+              <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Qemu Agent</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Disk -->
+        <div id="step-disk" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Disk Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bus/Device</label>
+              <select id="disk-bus" name="diskBus" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="scsi">SCSI</option>
+                <option value="ide">IDE</option>
+                <option value="virtio">VirtIO Block</option>
+                <option value="sata">SATA</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">SCSI Controller</label>
+              <select id="disk-scsi-controller" name="diskScsiController" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="virtio-scsi-pci">VirtIO SCSI PCI</option>
+                <option value="lsi53c895a">LSI 53C895A</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Storage</label>
+              <select id="storage-pool" name="storagePool" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="">Select Storage Pool</option>
+                <!-- Storage pools will be populated via JS -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Disk Size (GiB)</label>
+              <input type="number" id="disk-size" name="diskSize" value="20" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 5: CPU -->
+        <div id="step-cpu" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">CPU Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Socket</label>
+              <input type="number" id="cpu-sockets" name="cpuSockets" value="1" min="1" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Core</label>
+              <input type="number" id="cpu-cores" name="cpuCores" value="2" min="1" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Type</label>
+              <select id="cpu-type" name="cpuType" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="host">Host</option>
+                <option value="qemu64">QEMU64</option>
+                <option value="kvm64">KVM64</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 6: Memory -->
+        <div id="step-memory" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Memory Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Memory (MiB)</label>
+              <input type="number" id="memory" name="memory" value="2048" min="256" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="balloon-device" name="balloonDevice" class="mr-2" checked>
+              <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Ballooning Device</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 7: Network -->
+        <div id="step-network" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Network Configuration</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Bridge</label>
+              <select id="network-bridge" name="networkBridge" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="">Select Bridge</option>
+                <!-- Bridges will be populated via JS -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">VLAN Tag</label>
+              <input type="number" id="vlan-tag" name="vlanTag" placeholder="Optional" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Model</label>
+              <select id="network-model" name="networkModel" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+                <option value="virtio">VirtIO</option>
+                <option value="e1000">E1000</option>
+                <option value="rtl8139">RTL8139</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">MAC Address</label>
+              <input type="text" id="mac-address" name="macAddress" placeholder="Auto-generate" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 8: Confirm -->
+        <div id="step-confirm" class="step hidden">
+          <h4 class="text-md font-semibold text-slate-900 dark:text-white mb-4">Confirm Configuration</h4>
+          <div class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 mb-4">
+            <table class="w-full text-sm">
+              <thead>
+                <tr>
+                  <th class="text-left py-1">Key</th>
+                  <th class="text-left py-1">Value</th>
+                </tr>
+              </thead>
+              <tbody id="config-summary">
+                <!-- Configuration summary will be populated -->
+              </tbody>
+            </table>
+          </div>
+          <div class="flex items-center">
+            <input type="checkbox" id="start-after-create" name="startAfterCreate" class="mr-2" checked>
+            <label class="text-sm font-medium text-slate-700 dark:text-slate-300">Start after created</label>
+          </div>
+        </div>
+      </form>
+
+      <!-- Navigation Buttons -->
+      <div class="flex justify-between mt-6">
+        <button id="prev-btn" class="px-4 py-2 text-sm font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-50" disabled>Previous</button>
+        <div>
+          <button id="next-btn" class="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 mr-2">Next</button>
+          <button id="create-btn" class="px-4 py-2 text-sm font-medium text-white bg-green-500 rounded-lg hover:bg-green-600 hidden">Create Instance</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Instance Modal -->
+  <div id="edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-xl font-bold text-slate-900 dark:text-white">Edit Virtual Machine</h3>
+        <button onclick="closeEditModal()" class="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <form id="edit-instance-form" class="space-y-8">
+        <!-- Hardware Section -->
+        <div class="space-y-6">
+          <h4 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">Hardware</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Processor -->
+            <div class="relative">
+              <input type="text" id="edit-processor" name="processor" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-processor">Processor</label>
+            </div>
+
+            <!-- Memory -->
+            <div class="relative">
+              <input type="number" id="edit-memory-gb" name="memoryGB" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-memory-gb">Memory (GB)</label>
+            </div>
+
+            <!-- BIOS -->
+            <div class="relative">
+              <select id="edit-bios" name="bios" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="seabios">SeaBIOS</option>
+                <option value="ovmf">OVMF</option>
+              </select>
+              <label class="floating-label" for="edit-bios">BIOS</label>
+            </div>
+
+            <!-- Display/Graphics -->
+            <div class="relative">
+              <select id="edit-graphics" name="graphics" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="qxl">QXL</option>
+                <option value="virtio">VirtIO</option>
+                <option value="cirrus">Cirrus</option>
+              </select>
+              <label class="floating-label" for="edit-graphics">Display</label>
+            </div>
+
+            <!-- Machine -->
+            <div class="relative">
+              <select id="edit-machine" name="machine" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="pc">PC</option>
+                <option value="q35">Q35</option>
+              </select>
+              <label class="floating-label" for="edit-machine">Machine</label>
+            </div>
+
+            <!-- SCSI Controller -->
+            <div class="relative">
+              <select id="edit-scsi-controller" name="scsiController" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="virtio-scsi-pci">VirtIO SCSI PCI</option>
+                <option value="lsi53c895a">LSI 53C895A</option>
+              </select>
+              <label class="floating-label" for="edit-scsi-controller">SCSI Controller</label>
+            </div>
+
+            <!-- CD/DVD Drive -->
+            <div class="relative">
+              <select id="edit-cdrom" name="cdrom" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="">None</option>
+                <!-- ISOs will be populated via JS -->
+              </select>
+              <label class="floating-label" for="edit-cdrom">CD/DVD Drive</label>
+            </div>
+
+            <!-- Add CD/DVD Button -->
+            <div>
+              <button type="button" onclick="addCdDrive()" class="w-full h-full flex items-center justify-center gap-2 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary font-bold py-2 px-4 transition-colors clay-shadow">
+                <span class="material-symbols-outlined">add</span>
+                Add CD/DVD Disk
+              </button>
+            </div>
+
+            <!-- Hard Disk Size -->
+            <div class="relative">
+              <input type="number" id="edit-disk-size" name="diskSize" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-disk-size">Hard Disk 1 (GiB)</label>
+            </div>
+
+            <!-- Add Hard Disk Button -->
+            <div>
+              <button type="button" onclick="addHardDisk()" class="w-full h-full flex items-center justify-center gap-2 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary font-bold py-2 px-4 transition-colors clay-shadow">
+                <span class="material-symbols-outlined">add</span>
+                Add Hard Disk
+              </button>
+            </div>
+
+            <!-- Network Device -->
+            <div class="relative">
+              <select id="edit-network-bridge" name="networkBridge" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="">Select Bridge</option>
+                <!-- Bridges will be populated via JS -->
+              </select>
+              <label class="floating-label" for="edit-network-bridge">Network Device</label>
+            </div>
+
+            <!-- Add Network Device Button -->
+            <div>
+              <button type="button" onclick="addNetworkDevice()" class="w-full h-full flex items-center justify-center gap-2 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary font-bold py-2 px-4 transition-colors clay-shadow">
+                <span class="material-symbols-outlined">add</span>
+                Add Network Device
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cloud-Init Section -->
+        <div class="space-y-6">
+          <h4 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">Cloud-Init (if active)</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- User -->
+            <div class="relative">
+              <input type="text" id="edit-user" name="user" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-user">User</label>
+            </div>
+
+            <!-- Password -->
+            <div class="relative">
+              <input type="password" id="edit-password" name="password" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-password">Password</label>
+            </div>
+
+            <!-- DNS Domain -->
+            <div class="relative">
+              <input type="text" id="edit-dns-domain" name="dnsDomain" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-dns-domain">DNS Domain</label>
+            </div>
+
+            <!-- DNS Server -->
+            <div class="relative">
+              <input type="text" id="edit-dns-server" name="dnsServer" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-dns-server">DNS Server</label>
+            </div>
+
+            <!-- SSH Public Key -->
+            <div class="relative md:col-span-2">
+              <textarea id="edit-ssh-key" name="sshKey" placeholder=" " rows="4" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow"></textarea>
+              <label class="floating-label" for="edit-ssh-key">SSH Public Key</label>
+            </div>
+
+            <!-- Upgrade Package -->
+            <div class="relative">
+              <input type="text" id="edit-upgrade-package" name="upgradePackage" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-upgrade-package">Upgrade Package</label>
+            </div>
+
+            <!-- Additional Package -->
+            <div class="relative">
+              <input type="text" id="edit-additional-package" name="additionalPackage" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-additional-package">Additional Package</label>
+            </div>
+
+            <!-- IP Config -->
+            <div class="relative md:col-span-2">
+              <input type="text" id="edit-ip-config" name="ipConfig" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-ip-config">IP Config</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Options Section -->
+        <div class="space-y-6">
+          <h4 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">Options</h4>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Start at boot -->
+            <div class="relative">
+              <select id="edit-start-boot" name="startBoot" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+              <label class="floating-label" for="edit-start-boot">Start at boot</label>
+            </div>
+
+            <!-- OS Type -->
+            <div class="relative">
+              <select id="edit-os-type" name="osType" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="linux">Linux</option>
+                <option value="windows">Windows</option>
+                <option value="other">Other</option>
+              </select>
+              <label class="floating-label" for="edit-os-type">OS Type</label>
+            </div>
+
+            <!-- Boot Order -->
+            <div class="relative">
+              <select id="edit-boot-order" name="bootOrder" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="">Default</option>
+                <option value="c">Hard Disk (c)</option>
+                <option value="d">CD-ROM (d)</option>
+                <option value="n">Network (n)</option>
+                <option value="cd">Hard Disk → CD-ROM (cd)</option>
+                <option value="dc">CD-ROM → Hard Disk (dc)</option>
+                <option value="cn">Hard Disk → Network (cn)</option>
+                <option value="nc">Network → Hard Disk (nc)</option>
+                <option value="cdn">Hard Disk → CD-ROM → Network (cdn)</option>
+                <option value="dcn">CD-ROM → Hard Disk → Network (dcn)</option>
+                <option value="ncd">Network → CD-ROM → Hard Disk (ncd)</option>
+              </select>
+              <label class="floating-label" for="edit-boot-order">Boot Order</label>
+            </div>
+
+            <!-- Hotplug -->
+            <div class="relative">
+              <select id="edit-hotplug" name="hotplug" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+              <label class="floating-label" for="edit-hotplug">Hotplug</label>
+            </div>
+
+            <!-- KVM Hardware Virtualization -->
+            <div class="relative md:col-span-2">
+              <select id="edit-kvm-virtualization" name="kvmVirtualization" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="true">Enabled</option>
+                <option value="false">Disabled</option>
+              </select>
+              <label class="floating-label" for="edit-kvm-virtualization">KVM Hardware Virtualization</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-end gap-4 pt-6 border-t border-slate-200 dark:border-slate-700">
+          <button type="button" onclick="closeEditModal()" class="px-6 py-3 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors clay-shadow">
+            Cancel
+          </button>
+          <button type="submit" class="px-6 py-3 rounded-lg bg-primary text-white font-bold hover:opacity-90 transition-opacity clay-shadow">
+            Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="instances.js"></script>
+</body>
+</html>

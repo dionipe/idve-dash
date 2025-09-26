@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CloudVM Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#137fec",
+              "background-light": "#f6f7f8",
+              "background-dark": "#101922",
+            },
+            fontFamily: {
+              display: ["Space Grotesk"],
+            },
+            borderRadius: { DEFAULT: "0.5rem", lg: "1rem", xl: "1.5rem", full: "9999px" },
+          },
+        },
+      };
+    </script>
+<style>
+      .clay-shadow {
+        box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.2);
+      }
+      .clay-shadow-inset {
+        box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.2);
+      }
+      .dark .clay-shadow {
+        box-shadow: -6px -6px 12px rgba(255, 255, 255, 0.05), 6px 6px 12px rgba(0, 0, 0, 0.5);
+      }
+      .dark .clay-shadow-inset {
+        box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200">
+<div class="flex h-screen flex-col">
+<header class="flex items-center justify-between border-b border-slate-200/10 px-6 py-3">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-3xl"> cloud_queue </span>
+<h1 class="font-bold text-lg text-slate-900 dark:text-white">IDVE</h1>
+</div>
+        <nav class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/">Dashboard</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/instances.html">Instances</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/images.html">Images</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/networks.html">Networks</a>
+          <a class="text-slate-700 dark:text-slate-300 hover:text-primary" href="/storages.html">Storages</a>
+        </nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"> search </span>
+<input class="w-48 rounded-full border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 pl-10 pr-4 text-sm focus:border-primary focus:ring-primary" placeholder="Search..." type="text"/>
+</div>
+<button class="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
+<span class="material-symbols-outlined"> notifications </span>
+<span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary"></span>
+</button>
+<img alt="User avatar" class="h-9 w-9 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB98xLjzGQ3eawNaN7rlsl7olntzdPZngTqZ6SBBwpjQvb-5hn-AAbeydp7rYxilpBFCgcQ09SstAGAEKywOjcWCQFrtlO9TAmOxqkr_GWpRNmlA5RwprLELug8A8rbmPLuSBphGZBmEGaJoYHqOyjQ57vVDY9NWeEYo5zoknLfuNuwaZoDS4Kk1QYa3sBAOkMH9W4J3zWD_PhQudxDbSQIugGxiTUPTgv-9C_M0kbwPqUiv_CK231ttNQfK5SPA60BetjzroTVJ_s"/>
+</div>
+</header>
+<main class="flex-1 overflow-y-auto p-6 lg:p-8">
+<div class="mx-auto max-w-7xl">
+<div class="mb-6 flex items-center justify-between">
+<div>
+<h2 class="text-2xl font-bold text-slate-900 dark:text-white">Instance Details</h2>
+<p class="text-sm text-slate-500 dark:text-slate-400">View and manage your virtual machine instance.</p>
+</div>
+<div>
+<button onclick="window.location.href='/instances.html'" class="inline-flex items-center gap-2 rounded-lg bg-slate-100 dark:bg-slate-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+<span class="material-symbols-outlined text-lg">arrow_back</span>
+Back to Instances
+</button>
+</div>
+</div>
+<div class="grid grid-cols-1 gap-8 lg:grid-cols-3">
+<div class="lg:col-span-2">
+<div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+<h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Instance Overview</h3>
+<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div class="flex items-center gap-4 rounded-lg bg-slate-100 dark:bg-slate-800/50 p-4">
+<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined"> check_circle </span>
+</div>
+<div>
+<p class="text-sm text-slate-500 dark:text-slate-400">Status</p>
+<p class="font-semibold text-slate-900 dark:text-white">Running</p>
+</div>
+</div>
+<div class="flex items-center gap-4 rounded-lg bg-slate-100 dark:bg-slate-800/50 p-4">
+<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined"> storage </span>
+</div>
+<div>
+<p class="text-sm text-slate-500 dark:text-slate-400">Type</p>
+<p class="font-semibold text-slate-900 dark:text-white">Standard</p>
+</div>
+</div>
+<div class="flex items-center gap-4 rounded-lg bg-slate-100 dark:bg-slate-800/50 p-4">
+<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined"> router </span>
+</div>
+<div>
+<p class="text-sm text-slate-500 dark:text-slate-400">IP Address</p>
+<p class="font-semibold text-slate-900 dark:text-white">192.168.1.100</p>
+</div>
+</div>
+<div class="flex items-center gap-4 rounded-lg bg-slate-100 dark:bg-slate-800/50 p-4">
+<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/20 text-primary">
+<span class="material-symbols-outlined"> memory_alt </span>
+</div>
+<div>
+<p class="text-sm text-slate-500 dark:text-slate-400">Operating System</p>
+<p class="font-semibold text-slate-900 dark:text-white">Ubuntu 20.04</p>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8 rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+<h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Resource Usage</h3>
+<div class="grid grid-cols-1 gap-6 sm:grid-cols-3">
+<div class="flex flex-col">
+<p class="text-sm font-medium text-slate-500 dark:text-slate-400">CPU Usage</p>
+<p class="text-3xl font-bold text-slate-900 dark:text-white">65%</p>
+<div class="flex items-center text-sm">
+<span class="material-symbols-outlined text-green-500">arrow_upward</span>
+<p class="text-green-500">5%</p>
+<p class="ml-1 text-slate-500 dark:text-slate-400">vs last 24h</p>
+</div>
+</div>
+<div class="flex flex-col">
+<p class="text-sm font-medium text-slate-500 dark:text-slate-400">Memory Usage</p>
+<p class="text-3xl font-bold text-slate-900 dark:text-white">78%</p>
+<div class="flex items-center text-sm">
+<span class="material-symbols-outlined text-red-500">arrow_downward</span>
+<p class="text-red-500">3%</p>
+<p class="ml-1 text-slate-500 dark:text-slate-400">vs last 24h</p>
+</div>
+</div>
+<div class="flex flex-col">
+<p class="text-sm font-medium text-slate-500 dark:text-slate-400">Disk I/O</p>
+<p class="text-3xl font-bold text-slate-900 dark:text-white">42%</p>
+<div class="flex items-center text-sm">
+<span class="material-symbols-outlined text-green-500">arrow_upward</span>
+<p class="text-green-500">2%</p>
+<p class="ml-1 text-slate-500 dark:text-slate-400">vs last 24h</p>
+</div>
+</div>
+</div>
+<div class="mt-4 h-48">
+<svg fill="none" height="100%" preserveAspectRatio="none" viewBox="0 0 500 200" width="100%" xmlns="http://www.w3.org/2000/svg">
+<path d="M0 150 C 41.6 150, 41.6 50, 83.3 50 C 125 50, 125 100, 166.6 100 C 208.3 100, 208.3 20, 250 20 C 291.6 20, 291.6 120, 333.3 120 C 375 120, 375 170, 416.6 170 C 458.3 170, 458.3 80, 500 80" stroke="#137fec" stroke-linecap="round" stroke-width="3"></path>
+<path d="M0 150 C 41.6 150, 41.6 50, 83.3 50 C 125 50, 125 100, 166.6 100 C 208.3 100, 208.3 20, 250 20 C 291.6 20, 291.6 120, 333.3 120 C 375 120, 375 170, 416.6 170 C 458.3 170, 458.3 80, 500 80 V 200 H 0 Z" fill="url(#gradient)"></path>
+<defs>
+<linearGradient gradientUnits="userSpaceOnUse" id="gradient" x1="250" x2="250" y1="20" y2="200">
+<stop stop-color="#137fec" stop-opacity="0.2"></stop>
+<stop offset="1" stop-color="#137fec" stop-opacity="0"></stop>
+</linearGradient>
+</defs>
+</svg>
+</div>
+</div>
+</div>
+<div class="lg:col-span-1">
+<div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+<h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Console Access</h3>
+<div class="group relative aspect-video cursor-pointer overflow-hidden rounded-lg clay-shadow-inset">
+<img alt="VM Console Preview" class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBTLnbYi0NLIGCijY9f4s2pu06p5YzioTi-ML5awdhyRhlimf0SOsy5bDXSVnVMcfSfbo-R4ed3Xv6MwDOXWrhqbqD_BaCIMSffAXCI3ilMyjfd3n4Q6vMfBFPVP8AY3rvWJfsiWSpC8_1iMLdB2tP9bt89JRHnxvQUgvRTiFlGk6uD3LO0VKOprKLMmi6aB2aRDl3nEyy-e7y7FQMWLgCJR5lXBbzgXsZdVDYk8rVk90Q2KCGvc-nGOVWHz2TLXZeylyMu1Wd_FL4"/>
+<div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+<div class="flex h-16 w-16 items-center justify-center rounded-full bg-primary/80">
+<span class="material-symbols-outlined text-4xl text-white"> play_arrow </span>
+</div>
+</div>
+</div>
+<button class="mt-4 w-full rounded-lg bg-primary py-3 font-semibold text-white transition hover:bg-primary/90">
+                  Launch Console
+                </button>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const instanceId = urlParams.get('id');
+
+  if (instanceId) {
+    loadInstanceDetails(instanceId);
+  } else {
+    alert('No instance ID provided');
+    window.location.href = '/instances.html';
+  }
+});
+
+function loadInstanceDetails(instanceId) {
+  // Load instance basic info
+  fetch(`/api/instances/${instanceId}`)
+  .then(response => response.json())
+  .then(data => {
+    // Update page title with instance name
+    const titleElement = document.querySelector('h2.text-2xl.font-bold');
+    if (titleElement) {
+      titleElement.textContent = data.name || `Instance ${data.id}`;
+    }
+
+    // Update instance overview cards - find by the section heading
+    const overviewHeading = Array.from(document.querySelectorAll('h3')).find(h => h.textContent === 'Instance Overview');
+    if (overviewHeading) {
+      const overviewSection = overviewHeading.parentElement;
+      const statusCards = overviewSection.querySelectorAll('.flex.items-center.gap-4.rounded-lg');
+      if (statusCards.length >= 4) {
+        // Status
+        const statusElement = statusCards[0].querySelector('p.font-semibold');
+        if (statusElement) statusElement.textContent = data.status || 'Unknown';
+        
+        // Type (keep as Standard for now)
+        const typeElement = statusCards[1].querySelector('p.font-semibold');
+        if (typeElement) typeElement.textContent = 'Standard';
+        
+        // IP Address
+        const ipElement = statusCards[2].querySelector('p.font-semibold');
+        if (ipElement) ipElement.textContent = data.ipAddress || 'N/A';
+        
+        // Operating System
+        const osElement = statusCards[3].querySelector('p.font-semibold');
+        if (osElement) osElement.textContent = data.osType || 'Unknown';
+      }
+    }
+
+    // Update resource usage - find by the section heading
+    const resourceHeading = Array.from(document.querySelectorAll('h3')).find(h => h.textContent === 'Resource Usage');
+    if (resourceHeading) {
+      const resourceSection = resourceHeading.parentElement;
+      const resourceValues = resourceSection.querySelectorAll('.text-3xl.font-bold');
+      if (resourceValues.length >= 3) {
+        // Generate more realistic dummy values based on instance configuration
+        const memoryMB = data.memory || 2048;
+        const cpuCores = (data.cpuSockets || 1) * (data.cpuCores || 2);
+        
+        // CPU usage: random between 10-80%, higher for more cores
+        const cpuUsage = Math.floor(Math.random() * 70) + 10 + Math.min(cpuCores * 5, 20);
+        resourceValues[0].textContent = `${Math.min(cpuUsage, 95)}%`;
+        
+        // Memory usage: random between 40-90%, higher for larger memory
+        const memoryUsage = Math.floor(Math.random() * 50) + 40 + Math.min(memoryMB / 100, 20);
+        resourceValues[1].textContent = `${Math.min(memoryUsage, 95)}%`;
+        
+        // Disk I/O: random between 5-60%
+        const diskUsage = Math.floor(Math.random() * 55) + 5;
+        resourceValues[2].textContent = `${diskUsage}%`;
+      }
+    }
+  })
+  .catch(error => {
+    console.error('Error loading instance details:', error);
+    alert(`Failed to load instance details: ${error.message}`);
+  });
+
+  // Update console access button
+  const consoleBtn = document.querySelector('button.w-full.rounded-lg.bg-primary');
+  if (consoleBtn) {
+    consoleBtn.onclick = function() {
+      openConsole(instanceId);
+    };
+  }
+}
+
+function openConsole(instanceId) {
+  // Get VNC information for the instance
+  fetch(`/api/instances/${instanceId}/vnc`)
+  .then(response => response.json())
+  .then(data => {
+    // Open noVNC console in a new window - use WebSocket port for websockify connection
+    const consoleUrl = `/novnc/vnc.html?host=${window.location.hostname}&port=${data.wsPort}&path=&autoconnect=true`;
+    window.open(consoleUrl, `console-${instanceId}`, 'width=1024,height=768,scrollbars=no,resizable=yes');
+  })
+  .catch(error => {
+    console.error('Error opening console:', error);
+    alert(`Failed to open console for ${instanceId}: ${error.message}`);
+  });
+}
+</script>
+
+</body></html>

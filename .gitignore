@@ -79,7 +79,7 @@ dist
 
 # Gatsby files
 .cache/
-public
+# public - commented out as we need to commit frontend files
 
 # Vuepress build output
 .vuepress/dist
