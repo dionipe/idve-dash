@@ -135,6 +135,34 @@
               <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Host Resource Monitoring</h2>
               <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">Real-time monitoring of CPU, Memory, and Storage usage on the host machine.</p>
             </div>
+            
+            <!-- System Information -->
+            <div class="mt-6 rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">System Information</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="text-center">
+                  <p class="text-sm text-slate-500 dark:text-slate-400">CPU Cores</p>
+                  <p class="text-xl font-bold text-slate-900 dark:text-white" id="cpu-cores">0</p>
+                </div>
+                <div class="text-center">
+                  <p class="text-sm text-slate-500 dark:text-slate-400">CPU Model</p>
+                  <p class="text-sm font-medium text-slate-900 dark:text-white" id="cpu-model">-</p>
+                </div>
+                <div class="text-center">
+                  <p class="text-sm text-slate-500 dark:text-slate-400">CPU Sockets</p>
+                  <p class="text-xl font-bold text-slate-900 dark:text-white" id="cpu-sockets">0</p>
+                </div>
+                <div class="text-center">
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Kernel</p>
+                  <p class="text-sm font-medium text-slate-900 dark:text-white" id="kernel-version">-</p>
+                </div>
+                <div class="text-center md:col-span-2 lg:col-span-4">
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Operating System</p>
+                  <p class="text-lg font-bold text-slate-900 dark:text-white" id="os-name">-</p>
+                </div>
+              </div>
+            </div>
+            
             <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
               <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
                 <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">CPU Usage</h3>

@@ -404,6 +404,15 @@ function updateResourceCharts() {
       storageChart.update();
       document.getElementById('storage-percentage').textContent = `${storageUsedPercent}%`;
       document.getElementById('storage-details').textContent = `${formatBytes(data.storage.used * 1024)} / ${formatBytes(data.storage.total * 1024)}`;
+
+      // Update System Information
+      if (data.system) {
+        document.getElementById('cpu-cores').textContent = data.system.cpuCores || 0;
+        document.getElementById('cpu-model').textContent = data.system.cpuModel || '-';
+        document.getElementById('cpu-sockets').textContent = data.system.cpuSockets || 0;
+        document.getElementById('kernel-version').textContent = data.system.kernel || '-';
+        document.getElementById('os-name').textContent = data.system.os || '-';
+      }
     })
     .catch(error => {
       console.error('Error fetching host resources:', error);

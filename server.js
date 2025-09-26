@@ -48,7 +48,14 @@ app.get('/api/host-resources', (req, res) => {
   const resources = {
     cpu: { used: 0, total: 100 },
     memory: { used: 0, total: 0 },
-    storage: { used: 0, total: 0 }
+    storage: { used: 0, total: 0 },
+    system: {
+      cpuCores: 0,
+      cpuModel: '',
+      cpuSockets: 0,
+      kernel: '',
+      os: ''
+    }
   };
 
   // Get CPU usage
@@ -73,7 +80,45 @@ app.get('/api/host-resources', (req, res) => {
           resources.storage.total = total;
         }
 
-        res.json(resources);
+        // Get system info
+        exec("nproc", (error, stdout, stderr) => {
+          if (!error && stdout.trim()) {
+            resources.system.cpuCores = parseInt(stdout.trim());
+          }
+
+          exec("grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2 | sed 's/^ *//'", (error, stdout, stderr) => {
+            if (!error && stdout.trim()) {
+              resources.system.cpuModel = stdout.trim();
+            }
+
+            exec("grep 'physical id' /proc/cpuinfo | sort -u | wc -l", (error, stdout, stderr) => {
+              if (!error && stdout.trim()) {
+                resources.system.cpuSockets = parseInt(stdout.trim());
+              }
+
+              exec("uname -r", (error, stdout, stderr) => {
+                if (!error && stdout.trim()) {
+                  resources.system.kernel = stdout.trim();
+                }
+
+                exec("lsb_release -d | cut -f2", (error, stdout, stderr) => {
+                  if (!error && stdout.trim()) {
+                    resources.system.os = stdout.trim();
+                  } else {
+                    // Fallback to /etc/os-release
+                    exec("grep PRETTY_NAME /etc/os-release | cut -d'=' -f2 | tr -d '\"'", (error, stdout, stderr) => {
+                      if (!error && stdout.trim()) {
+                        resources.system.os = stdout.trim();
+                      }
+                      res.json(resources);
+                    });
+                  }
+                  if (!error) res.json(resources);
+                });
+              });
+            });
+          });
+        });
       });
     });
   });
