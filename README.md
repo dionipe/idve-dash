@@ -1,4 +1,20 @@
-# IDVE Dashboard
+# IDVE Dash*Watch the demo video above to see IDVE Dashboard in action!*
+
+## 📸 Screenshots
+
+### Dashboard Overview
+![Dashboard](documentations/Dashboard.png)
+
+### Virtual Machine Instances
+![Instances](documentations/Instances.png)
+
+### Network Management
+![Networks](documentations/Networks.png)
+
+### Storage Management
+![Images](documentations/Images.png)
+
+## 🚀 Featuresrd
 
 A modern, web-based dashboard for managing virtual machines and network infrastructure. Built with Node.js, Express, and Socket.IO, featuring a beautiful Tailwind CSS interface.
 
