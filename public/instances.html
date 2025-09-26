@@ -92,10 +92,16 @@
             <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Instances</h2>
             <p class="text-sm text-slate-500 dark:text-slate-400">Manage your virtual machine instances.</p>
           </div>
-          <button onclick="showCreateInstanceModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
-            <span class="material-symbols-outlined mr-2">add</span>
-            Create Instance
-          </button>
+          <div class="flex gap-3">
+            <button onclick="showCreateInstanceModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
+              <span class="material-symbols-outlined mr-2">add</span>
+              Create Instance
+            </button>
+            <button onclick="showCloudInitModal()" class="rounded-lg bg-green-600 hover:bg-green-700 px-4 py-2 font-semibold text-white transition">
+              <span class="material-symbols-outlined mr-2">cloud</span>
+              Cloud-Init Instance
+            </button>
+          </div>
         </div>
 
         <!-- Statistics Cards -->
@@ -652,6 +658,97 @@
           </button>
           <button type="submit" class="px-6 py-3 rounded-lg bg-primary text-white font-bold hover:opacity-90 transition-opacity clay-shadow">
             Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Cloud-Init Create Instance Modal -->
+  <div id="cloudinit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-8">
+      <div class="flex items-center justify-between mb-8">
+        <h3 class="text-xl font-bold text-slate-900 dark:text-white">Create Cloud-Init Instance</h3>
+        <button onclick="closeCloudInitModal()" class="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <form id="cloudinit-form" class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Template Selection -->
+          <div class="relative floating-label-group">
+            <span class="material-symbols-outlined absolute top-1/2 left-4 -translate-y-1/2 text-slate-400">layer_group</span>
+            <select id="cloudinit-template" name="template" class="form-input w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 pl-11 pr-4 py-3 appearance-none focus:border-primary focus:ring-primary placeholder-transparent">
+              <option disabled selected>Select a template</option>
+              <option value="web-server">Web Server (LAMP)</option>
+              <option value="development">Development (Node.js)</option>
+              <option value="database">Database (PostgreSQL)</option>
+              <option value="custom">Custom</option>
+            </select>
+            <label class="floating-label text-slate-500 dark:text-slate-400" for="cloudinit-template">Template</label>
+          </div>
+
+          <!-- OS Selection -->
+          <div class="relative floating-label-group">
+            <span class="material-symbols-outlined absolute top-1/2 left-4 -translate-y-1/2 text-slate-400">dns</span>
+            <select id="cloudinit-os" name="os" class="form-input w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 pl-11 pr-4 py-3 appearance-none focus:border-primary focus:ring-primary placeholder-transparent">
+              <option disabled selected>Select an OS</option>
+              <option value="ubuntu-22.04">Ubuntu 22.04 LTS</option>
+              <option value="centos-stream-9">CentOS Stream 9</option>
+              <option value="debian-12">Debian 12</option>
+              <option value="rocky-9">Rocky Linux 9</option>
+            </select>
+            <label class="floating-label text-slate-500 dark:text-slate-400" for="cloudinit-os">Operating System</label>
+          </div>
+        </div>
+
+        <!-- Cloud-Init Configuration -->
+        <div>
+          <h4 class="text-lg font-semibold mb-4 text-slate-900 dark:text-white">Cloud-Init Configuration</h4>
+          <div class="space-y-3 pl-2">
+            <div class="flex items-center">
+              <input type="checkbox" id="cloudinit-network" name="networkConfig" class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800/50 text-primary focus:ring-primary" checked>
+              <label class="ml-2 block text-sm text-slate-700 dark:text-slate-300" for="cloudinit-network">Enable Network Configuration</label>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="cloudinit-disk-resize" name="diskResize" class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800/50 text-primary focus:ring-primary" checked>
+              <label class="ml-2 block text-sm text-slate-700 dark:text-slate-300" for="cloudinit-disk-resize">Auto-resize Disk</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Custom IP Address -->
+          <div class="relative floating-label-group">
+            <span class="material-symbols-outlined absolute top-1/2 left-4 -translate-y-1/2 text-slate-400">network_ping</span>
+            <input type="text" id="cloudinit-ip" name="ipAddress" placeholder=" " class="form-input w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 pl-11 pr-4 py-3 focus:border-primary focus:ring-primary">
+            <label class="floating-label text-slate-500 dark:text-slate-400" for="cloudinit-ip">Custom IP Address (optional)</label>
+          </div>
+
+          <!-- Instance Name -->
+          <div class="relative floating-label-group">
+            <span class="material-symbols-outlined absolute top-1/2 left-4 -translate-y-1/2 text-slate-400">computer</span>
+            <input type="text" id="cloudinit-name" name="instanceName" placeholder=" " class="form-input w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 pl-11 pr-4 py-3 focus:border-primary focus:ring-primary" required>
+            <label class="floating-label text-slate-500 dark:text-slate-400" for="cloudinit-name">Instance Name</label>
+          </div>
+        </div>
+
+        <!-- SSH Key -->
+        <div class="relative floating-label-group">
+          <span class="material-symbols-outlined absolute top-1/2 left-4 -translate-y-1/2 text-slate-400">key</span>
+          <textarea id="cloudinit-ssh-key" name="sshKey" placeholder=" " rows="3" class="form-input w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 pl-11 pr-4 py-3 focus:border-primary focus:ring-primary resize-none"></textarea>
+          <label class="floating-label text-slate-500 dark:text-slate-400" for="cloudinit-ssh-key">SSH Public Key (optional)</label>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-end gap-4 pt-6">
+          <button type="button" onclick="closeCloudInitModal()" class="px-6 py-3 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors clay-shadow">
+            Cancel
+          </button>
+          <button type="submit" class="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold transition-colors clay-shadow">
+            <span class="material-symbols-outlined mr-2">cloud</span>
+            Create Cloud-Init Instance
           </button>
         </div>
       </form>

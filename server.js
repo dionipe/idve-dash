@@ -15,6 +15,43 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// API endpoint for host resource monitoring
+app.get('/api/host-resources', (req, res) => {
+  const resources = {
+    cpu: { used: 0, total: 100 },
+    memory: { used: 0, total: 0 },
+    storage: { used: 0, total: 0 }
+  };
+
+  // Get CPU usage
+  exec("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", (error, stdout, stderr) => {
+    if (!error && stdout.trim()) {
+      resources.cpu.used = parseFloat(stdout.trim());
+    }
+
+    // Get memory info
+    exec("free -m | awk 'NR==2{printf \"%.0f %.0f\", $3, $2}'", (error, stdout, stderr) => {
+      if (!error && stdout.trim()) {
+        const [used, total] = stdout.trim().split(' ').map(Number);
+        resources.memory.used = used;
+        resources.memory.total = total;
+      }
+
+      // Get storage info for root filesystem
+      exec("df / | awk 'NR==2{printf \"%.0f %.0f\", $3, $2}'", (error, stdout, stderr) => {
+        if (!error && stdout.trim()) {
+          const [used, total] = stdout.trim().split(' ').map(Number);
+          resources.storage.used = used;
+          resources.storage.total = total;
+        }
+
+        res.json(resources);
+      });
+    });
+  });
+});
+
+// API routes for storages
 // Get VNC port for instance console
 app.get('/api/instances/:id/vnc', (req, res) => {
   const instanceId = req.params.id;
@@ -873,6 +910,181 @@ app.delete('/api/storages/:name', (req, res) => {
   const name = req.params.name;
   storages = storages.filter(stor => stor.name !== name);
   res.json({ message: 'Storage deleted' });
+});
+
+// Cloud-Init API routes
+app.get('/api/cloudinit-templates', (req, res) => {
+  // Return available Cloud-Init templates
+  const templates = [
+    { id: 'web-server', name: 'Web Server (LAMP)', description: 'Apache, MySQL, PHP stack' },
+    { id: 'development', name: 'Development (Node.js)', description: 'Node.js development environment' },
+    { id: 'database', name: 'Database (PostgreSQL)', description: 'PostgreSQL database server' },
+    { id: 'custom', name: 'Custom', description: 'Custom Cloud-Init configuration' }
+  ];
+  res.json(templates);
+});
+
+app.post('/api/instances/cloudinit', (req, res) => {
+  const {
+    template,
+    os,
+    instanceName,
+    ipAddress,
+    sshKey,
+    networkConfig,
+    diskResize
+  } = req.body;
+
+  // Generate unique instance ID
+  const instanceId = `cloudinit-${Date.now()}`;
+
+  // Determine OS-specific settings
+  let osSettings = {};
+  switch (os) {
+    case 'ubuntu-22.04':
+      osSettings = {
+        image: 'ubuntu-22.04-server-cloudimg-amd64.img',
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: ubuntu\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/ubuntu\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    ubuntu:ubuntu\n  expire: false\n'
+      };
+      break;
+    case 'centos-stream-9':
+      osSettings = {
+        image: 'centos-stream-9-x86_64-boot.iso',
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: centos\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/centos\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    centos:centos\n  expire: false\n'
+      };
+      break;
+    case 'debian-12':
+      osSettings = {
+        image: 'debian-12-generic-amd64.qcow2',
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
+      };
+      break;
+    case 'rocky-9':
+      osSettings = {
+        image: 'rocky-9-x86_64-boot.iso',
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: rocky\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/rocky\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    rocky:rocky\n  expire: false\n'
+      };
+      break;
+    default:
+      return res.status(400).json({ error: 'Unsupported OS' });
+  }
+
+  // Apply template-specific packages
+  let additionalPackages = [];
+  switch (template) {
+    case 'web-server':
+      additionalPackages = ['apache2', 'mysql-server', 'php', 'php-mysql'];
+      break;
+    case 'development':
+      additionalPackages = ['nodejs', 'npm', 'git', 'build-essential'];
+      break;
+    case 'database':
+      additionalPackages = ['postgresql', 'postgresql-contrib'];
+      break;
+  }
+
+  // Create Cloud-Init user-data
+  let userData = osSettings.userDataTemplate;
+  if (additionalPackages.length > 0) {
+    userData += '\npackages:\n' + additionalPackages.map(pkg => `  - ${pkg}`).join('\n');
+  }
+
+  // Add SSH key if provided
+  if (sshKey) {
+    userData = userData.replace('${SSH_KEY}', sshKey);
+  } else {
+    // Remove SSH key section if not provided
+    userData = userData.replace(/\s*ssh-authorized-keys:[\s\S]*?(?=\n\w|$)/, '');
+  }
+
+  // Add network configuration if enabled
+  if (networkConfig && ipAddress) {
+    userData += `\nnetwork:\n  version: 2\n  ethernets:\n    ens3:\n      addresses:\n        - ${ipAddress}/24\n      gateway4: 192.168.122.1\n      nameservers:\n        addresses:\n          - 8.8.8.8\n          - 8.8.4.4\n`;
+  }
+
+  // Save user-data to file
+  const userDataPath = `/var/lib/idve/cloudinit/${instanceId}-user-data`;
+  const metaDataPath = `/var/lib/idve/cloudinit/${instanceId}-meta-data`;
+
+  // Ensure cloudinit directory exists
+  if (!fs.existsSync('/var/lib/idve/cloudinit')) {
+    fs.mkdirSync('/var/lib/idve/cloudinit', { recursive: true });
+  }
+
+  // Create meta-data
+  const metaData = `instance-id: ${instanceId}\nlocal-hostname: ${instanceName}\n`;
+
+  fs.writeFileSync(userDataPath, userData);
+  fs.writeFileSync(metaDataPath, metaData);
+
+  // Create disk from base image
+  const baseImagePath = `/var/lib/idve/images/${osSettings.image}`;
+  const instanceDiskPath = `/var/lib/idve/instances/${instanceId}.qcow2`;
+
+  // Ensure instances directory exists
+  if (!fs.existsSync('/var/lib/idve/instances')) {
+    fs.mkdirSync('/var/lib/idve/instances', { recursive: true });
+  }
+
+  // Copy base image to instance disk
+  exec(`cp ${baseImagePath} ${instanceDiskPath}`, (copyErr) => {
+    if (copyErr) {
+      console.error('Error copying base image:', copyErr);
+      return res.status(500).json({ error: 'Failed to create instance disk' });
+    }
+
+    // Resize disk if requested
+    if (diskResize) {
+      exec(`qemu-img resize ${instanceDiskPath} +10G`, (resizeErr) => {
+        if (resizeErr) {
+          console.error('Error resizing disk:', resizeErr);
+          // Continue anyway, disk resize is optional
+        }
+
+        createInstanceConfig();
+      });
+    } else {
+      createInstanceConfig();
+    }
+  });
+
+  function createInstanceConfig() {
+    // Create instance configuration
+    const instanceConfig = {
+      id: instanceId,
+      name: instanceName,
+      host: 'localhost',
+      osType: os,
+      template: template,
+      cloudInit: true,
+      userDataPath: userDataPath,
+      metaDataPath: metaDataPath,
+      diskPath: instanceDiskPath,
+      cpuSockets: 1,
+      cpuCores: 2,
+      cpuType: 'host',
+      memory: 2048,
+      networkBridge: 'virbr0',
+      networkModel: 'virtio',
+      graphics: 'virtio',
+      machine: 'q35',
+      bios: 'seabios',
+      createdAt: new Date().toISOString(),
+      status: 'created'
+    };
+
+    // Save instance configuration
+    const configPath = `/etc/idve/${instanceId}.json`;
+    fs.writeFileSync(configPath, JSON.stringify(instanceConfig, null, 2));
+    console.log(`Cloud-Init instance configuration saved to ${configPath}`);
+
+    res.json({
+      success: true,
+      message: 'Cloud-Init instance created successfully',
+      instanceId: instanceId,
+      config: instanceConfig
+    });
+  }
 });
 
 // Socket for terminal

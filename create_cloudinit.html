@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CloudVM - Create Instance</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link crossorigin="anonymous" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" referrerpolicy="no-referrer" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: "#137fec",
+              "background-light": "#f6f7f8",
+              "background-dark": "#101922",
+            },
+            fontFamily: {
+              display: ["Space Grotesk", "sans-serif"],
+            },
+            borderRadius: { DEFAULT: "0.5rem", lg: "1rem", xl: "1.5rem", full: "9999px" },
+          },
+        },
+      };
+    </script>
+<style>
+      .claymorphism {
+        box-shadow: -8px -8px 16px rgba(255, 255, 255, 0.05), 8px 8px 16px rgba(0, 0, 0, 0.5), inset -8px -8px 16px rgba(255, 255, 255, 0.05), inset 8px 8px 16px rgba(0, 0, 0, 0.5);
+      }
+      .claymorphism-light {
+        box-shadow: -4px -4px 8px rgba(255, 255, 255, 0.8), 4px 4px 8px rgba(0, 0, 0, 0.2), inset -4px -4px 8px rgba(255, 255, 255, 0.8), inset 4px 4px 8px rgba(0, 0, 0, 0.2);
+      }
+      .floating-label-group {
+        position: relative;
+      }
+      .floating-label {
+        position: absolute;
+        top: 50%;
+        left: 2.75rem;
+        transform: translateY(-50%);
+        transition: all 0.2s ease-in-out;
+        pointer-events: none;
+        opacity: 0.7;
+      }
+      .form-input:focus ~ .floating-label,
+      .form-input:not(:placeholder-shown) ~ .floating-label {
+        top: 0.75rem;
+        font-size: 0.75rem;
+        opacity: 1;
+      }
+    </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark text-gray-800 dark:text-gray-200">
+<div class="flex h-full min-h-screen w-full items-center justify-center p-4">
+<div class="w-full max-w-2xl rounded-xl bg-background-light/50 dark:bg-background-dark/50 claymorphism-light dark:claymorphism p-8">
+<h1 class="text-3xl font-bold text-center mb-8 text-gray-900 dark:text-white">Create New Virtual Machine</h1>
+<form class="space-y-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="relative floating-label-group">
+<i class="fa-solid fa-layer-group absolute top-1/2 left-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+<select class="form-select form-input w-full rounded-lg border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark/80 pl-11 pr-4 py-3 appearance-none focus:border-primary focus:ring-primary placeholder-transparent" id="template">
+<option disabled="" selected="">Select a template</option>
+<option>Web Server (LAMP)</option>
+<option>Development (Node.js)</option>
+<option>Database (PostgreSQL)</option>
+</select>
+<label class="floating-label text-gray-500 dark:text-gray-400" for="template">Template</label>
+</div>
+<div class="relative floating-label-group">
+<i class="fa-brands fa-linux absolute top-1/2 left-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+<select class="form-select form-input w-full rounded-lg border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark/80 pl-11 pr-4 py-3 appearance-none focus:border-primary focus:ring-primary placeholder-transparent" id="os">
+<option disabled="" selected="">Select an OS</option>
+<option>Ubuntu 22.04 LTS</option>
+<option>CentOS Stream 9</option>
+<option>Debian 12</option>
+<option>FreeBSD 13.2</option>
+</select>
+<label class="floating-label text-gray-500 dark:text-gray-400" for="os">Operating System</label>
+</div>
+</div>
+<div>
+<h3 class="text-lg font-semibold mb-3 text-gray-900 dark:text-white">Cloud-Init Configuration</h3>
+<div class="space-y-2 pl-2">
+<div class="flex items-center">
+<input checked="" class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 bg-background-light dark:bg-background-dark/80 text-primary focus:ring-primary" id="network-config" type="checkbox"/>
+<label class="ml-2 block text-sm text-gray-700 dark:text-gray-300" for="network-config">Enable Network Configuration</label>
+</div>
+<div class="flex items-center">
+<input checked="" class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 bg-background-light dark:bg-background-dark/80 text-primary focus:ring-primary" id="disk-resize" type="checkbox"/>
+<label class="ml-2 block text-sm text-gray-700 dark:text-gray-300" for="disk-resize">Auto-resize Disk</label>
+</div>
+</div>
+</div>
+<div class="relative floating-label-group">
+<i class="fa-solid fa-network-wired absolute top-1/2 left-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+<input class="form-input w-full rounded-lg border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark/80 pl-11 pr-4 py-3 focus:border-primary focus:ring-primary" id="ip-address" placeholder=" " type="text"/>
+<label class="floating-label text-gray-500 dark:text-gray-400" for="ip-address">Custom IP Address (optional)</label>
+</div>
+<div class="relative floating-label-group">
+<i class="fa-solid fa-key absolute top-1/2 left-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"></i>
+<textarea class="form-textarea form-input w-full rounded-lg border-gray-300 dark:border-gray-700 bg-background-light dark:bg-background-dark/80 pl-11 pr-4 py-3 focus:border-primary focus:ring-primary resize-none" id="ssh-key" placeholder=" " rows="3"></textarea>
+<label class="floating-label text-gray-500 dark:text-gray-400" for="ssh-key">SSH Key Authentication</label>
+</div>
+<div class="flex justify-end space-x-4 pt-4">
+<button class="px-6 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold transition-colors duration-200" type="button">
+              Cancel
+            </button>
+<button class="px-6 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white font-semibold transition-colors duration-200 shadow-lg shadow-primary/30" type="submit">
+<i class="fa-solid fa-rocket mr-2"></i>Create Instance
+            </button>
+</div>
+</form>
+</div>
+</div>
+
+</body></html>

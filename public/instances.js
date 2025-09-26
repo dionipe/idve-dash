@@ -792,6 +792,126 @@ function addNetworkDevice() {
   alert('Add Network Device functionality - to be implemented');
 }
 
+// Cloud-Init Instance functions
+function showCloudInitModal() {
+  document.getElementById('cloudinit-modal').classList.remove('hidden');
+  document.getElementById('cloudinit-modal').classList.add('flex');
+  populateCloudInitTemplates();
+}
+
+function closeCloudInitModal() {
+  document.getElementById('cloudinit-modal').classList.add('hidden');
+  document.getElementById('cloudinit-modal').classList.remove('flex');
+}
+
+function populateCloudInitTemplates() {
+  // Fetch available cloud-init templates from the server
+  fetch('/api/cloudinit-templates')
+    .then(response => response.json())
+    .then(templates => {
+      const templateSelect = document.getElementById('cloudinit-template');
+      // Clear existing options except the first one
+      while (templateSelect.options.length > 1) {
+        templateSelect.remove(1);
+      }
+
+      // Add templates from server
+      templates.forEach(template => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.name;
+        templateSelect.appendChild(option);
+      });
+    })
+    .catch(error => {
+      console.error('Error loading cloud-init templates:', error);
+      // Fallback to static options if API fails
+    });
+}
+
+function createCloudInitInstance() {
+  const form = document.getElementById('cloudinit-form');
+  const formData = new FormData(form);
+
+  const instanceData = {
+    template: formData.get('template'),
+    os: formData.get('os'),
+    instanceName: formData.get('instanceName'),
+    ipAddress: formData.get('ipAddress'),
+    sshKey: formData.get('sshKey'),
+    networkConfig: formData.get('networkConfig') === 'on',
+    diskResize: formData.get('diskResize') === 'on'
+  };
+
+  // Show loading state
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const originalText = submitBtn.innerHTML;
+  submitBtn.innerHTML = '<span class="material-symbols-outlined animate-spin mr-2">refresh</span>Creating...';
+  submitBtn.disabled = true;
+
+  fetch('/api/instances/cloudinit', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(instanceData)
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      closeCloudInitModal();
+      loadInstances(); // Refresh the instances list
+      showNotification('Cloud-Init instance created successfully!', 'success');
+    } else {
+      throw new Error(data.message || 'Failed to create Cloud-Init instance');
+    }
+  })
+  .catch(error => {
+    console.error('Error creating Cloud-Init instance:', error);
+    showNotification('Failed to create Cloud-Init instance: ' + error.message, 'error');
+  })
+  .finally(() => {
+    // Restore button state
+    submitBtn.innerHTML = originalText;
+    submitBtn.disabled = false;
+  });
+}
+
+// Notification function
+function showNotification(message, type = 'info') {
+  // Remove existing notifications
+  const existingNotifications = document.querySelectorAll('.notification');
+  existingNotifications.forEach(notification => notification.remove());
+
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = `notification fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg clay-shadow max-w-sm ${
+    type === 'success' ? 'bg-green-500 text-white' :
+    type === 'error' ? 'bg-red-500 text-white' :
+    'bg-blue-500 text-white'
+  }`;
+  notification.innerHTML = `
+    <div class="flex items-center">
+      <span class="material-symbols-outlined mr-2">${
+        type === 'success' ? 'check_circle' :
+        type === 'error' ? 'error' :
+        'info'
+      }</span>
+      <span>${message}</span>
+    </div>
+  `;
+
+  // Add to page
+  document.body.appendChild(notification);
+
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.remove();
+    }
+  }, 5000);
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', function() {
   // Edit form submission
@@ -800,6 +920,15 @@ document.addEventListener('DOMContentLoaded', function() {
     editForm.addEventListener('submit', function(e) {
       e.preventDefault();
       updateInstance();
+    });
+  }
+
+  // Cloud-Init form submission
+  const cloudInitForm = document.getElementById('cloudinit-form');
+  if (cloudInitForm) {
+    cloudInitForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      createCloudInitInstance();
     });
   }
 
