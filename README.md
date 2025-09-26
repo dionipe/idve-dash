@@ -2,7 +2,16 @@
 
 A modern, web-based dashboard for managing virtual machines and network infrastructure. Built with Node.js, Express, and Socket.IO, featuring a beautiful Tailwind CSS interface.
 
-## 🚀 Features
+## � Demo Video
+
+<video width="100%" controls>
+  <source src="documentations/idve-dash.mov" type="video/quicktime">
+  Your browser does not support the video tag.
+</video>
+
+*Watch the demo video above to see IDVE Dashboard in action!*
+
+## �🚀 Features
 
 ### Virtual Machine Management
 - **Create VMs** with comprehensive configuration options
