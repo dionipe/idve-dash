@@ -43,6 +43,36 @@ function findAvailablePort(basePort, callback, maxAttempts = 10) {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Routes
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Route to server instances
+app.get('/instances', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'instances.html'));
+});
+
+// Route to server images
+app.get('/images', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'images.html'));
+});
+
+// Route to server storages
+app.get('/storages', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'storages.html'));
+});
+
+// Route to server networks
+app.get('/networks', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'networks.html'));
+});
+
+// Route to server vm-details
+app.get('/vm-detail', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'vm-detail.html'));
+});
+
 // API endpoint for host resource monitoring
 app.get('/api/host-resources', (req, res) => {
   const resources = {
@@ -237,11 +267,6 @@ app.get('/api/instances/:id/vnc', (req, res) => {
     wsPort: wsPort,
     vncUrl: `vnc.html?host=${host}&port=${wsPort}&path=&autoconnect=true`
   });
-});
-
-// Routes
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // API routes for VMs
@@ -1180,6 +1205,12 @@ app.post('/api/instances/cloudinit', (req, res) => {
       osSettings = {
         image: 'ubuntu-22.04-server-cloudimg-amd64.img',
         userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: ubuntu\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/ubuntu\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    ubuntu:ubuntu\n  expire: false\n'
+      };
+      break;
+    case 'freebsd-14.2':
+      osSettings = {
+        image: 'freebsd-14.2-zfs-2024-12-08.qcow2',
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: freebsd\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/freebsd\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    freebsd:freebsd\n  expire: false\n'
       };
       break;
     case 'centos-stream-9':

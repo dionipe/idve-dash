@@ -639,7 +639,7 @@ function populateStoragePools() {
 }
 
 function viewInstanceDetails(instanceId) {
-  window.location.href = `/vm-detail.html?id=${instanceId}`;
+  window.location.href = `/vm-detail?id=${instanceId}`;
 }
 
 function openConsole(instanceId) {
