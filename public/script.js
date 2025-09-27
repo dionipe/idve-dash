@@ -1,5 +1,108 @@
 const socket = io();
 
+// Authentication functions
+async function checkAuthStatus() {
+  try {
+    const response = await fetch('/api/auth-status');
+    const data = await response.json();
+    return data.authenticated;
+  } catch (error) {
+    console.error('Error checking auth status:', error);
+    return false;
+  }
+}
+
+function showLoginModal() {
+  document.getElementById('login-modal').classList.remove('hidden');
+  document.getElementById('login-modal').classList.add('flex');
+}
+
+function hideLoginModal() {
+  document.getElementById('login-modal').classList.add('hidden');
+  document.getElementById('login-modal').classList.remove('flex');
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const loginBtn = document.getElementById('login-btn');
+  const loginError = document.getElementById('login-error');
+  
+  // Show loading state
+  loginBtn.disabled = true;
+  loginBtn.innerHTML = '<span class="inline-block mr-2">Logging in...</span><span class="material-symbols-outlined text-sm animate-spin">refresh</span>';
+  
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      hideLoginModal();
+      // Reload the page to initialize the dashboard
+      window.location.reload();
+    } else {
+      loginError.textContent = data.message || 'Login failed';
+      loginError.classList.remove('hidden');
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    loginError.textContent = 'Network error. Please try again.';
+    loginError.classList.remove('hidden');
+  } finally {
+    // Reset button state
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = '<span class="inline-block mr-2">Login</span><span class="material-symbols-outlined text-sm">login</span>';
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.reload();
+  } catch (error) {
+    console.error('Logout error:', error);
+  }
+}
+
+// Initialize authentication on page load
+document.addEventListener('DOMContentLoaded', async function() {
+  const isAuthenticated = await checkAuthStatus();
+  
+  if (!isAuthenticated) {
+    showLoginModal();
+  } else {
+    // Initialize dashboard if authenticated
+    initializeDashboard();
+  }
+  
+  // Setup login form
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', handleLogin);
+  }
+});
+
+function initializeDashboard() {
+  // Initialize all dashboard components
+  loadDashboardData();
+  initResourceCharts();
+  initNetworkTrafficChart();
+  updateResourceCharts();
+  
+  // Set up periodic updates
+  setInterval(updateResourceCharts, 30000);
+  setInterval(updateNetworkTrafficChart, 5000);
+}
+
 function showSection(sectionId) {
   document.querySelectorAll('.section').forEach(section => {
     section.classList.remove('active');
@@ -285,24 +388,6 @@ function loadDashboard() {
     });
   });
 }
-
-// Initialize everything when page loads
-document.addEventListener('DOMContentLoaded', function() {
-  // Initialize resource monitoring charts
-  initResourceCharts();
-  initNetworkTrafficChart();
-  updateResourceCharts();
-  updateNetworkTrafficChart();
-  
-  // Update resource data every 30 seconds
-  setInterval(updateResourceCharts, 30000);
-  
-  // Update network traffic data every 5 seconds
-  setInterval(updateNetworkTrafficChart, 5000);
-  
-  // Load initial dashboard data
-  loadDashboard();
-});
 
 // Host Resource Monitoring
 let cpuChart, memoryChart, storageChart, networkTrafficChart;

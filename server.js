@@ -4,6 +4,8 @@ const socketIo = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
 
 const app = express();
 const server = http.createServer(app);
@@ -41,7 +43,60 @@ function findAvailablePort(basePort, callback, maxAttempts = 10) {
 
 // Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Session configuration
+app.use(session({
+  secret: 'idve-dashboard-secret-key-2025',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false, // Set to true in production with HTTPS
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
+// Authentication middleware
+function requireAuth(req, res, next) {
+  if (req.session.user) {
+    return next();
+  }
+  res.status(401).json({ error: 'Authentication required' });
+}
+
+// Default credentials (in production, use environment variables or database)
+const DEFAULT_USERNAME = 'admin';
+const DEFAULT_PASSWORD = 'admin123';
+
+// Authentication routes
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  
+  if (username === DEFAULT_USERNAME && password === DEFAULT_PASSWORD) {
+    req.session.user = { username: username };
+    res.json({ success: true, message: 'Login successful' });
+  } else {
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+  }
+});
+
+app.post('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      return res.status(500).json({ success: false, message: 'Logout failed' });
+    }
+    res.json({ success: true, message: 'Logout successful' });
+  });
+});
+
+app.get('/api/auth-status', (req, res) => {
+  if (req.session.user) {
+    res.json({ authenticated: true, user: req.session.user });
+  } else {
+    res.json({ authenticated: false });
+  }
+});
 
 // Routes
 app.get('/', (req, res) => {
@@ -74,7 +129,7 @@ app.get('/vm-detail', (req, res) => {
 });
 
 // API endpoint for host resource monitoring
-app.get('/api/host-resources', (req, res) => {
+app.get('/api/host-resources', requireAuth, (req, res) => {
   const resources = {
     cpu: { used: 0, total: 100 },
     memory: { used: 0, total: 0 },
@@ -158,7 +213,7 @@ app.get('/api/host-resources', (req, res) => {
 let networkTrafficHistory = {};
 let lastNetworkStats = {};
 
-app.get('/api/network-traffic', (req, res) => {
+app.get('/api/network-traffic', requireAuth, (req, res) => {
   // Get network interface statistics
   exec('cat /proc/net/dev', (error, stdout, stderr) => {
     if (error) {
@@ -270,7 +325,7 @@ app.get('/api/instances/:id/vnc', (req, res) => {
 });
 
 // API routes for VMs
-app.get('/api/instances', (req, res) => {
+app.get('/api/instances', requireAuth, (req, res) => {
   const instancesDir = '/etc/idve';
   fs.readdir(instancesDir, (err, files) => {
     if (err) {
@@ -293,7 +348,7 @@ app.get('/api/instances', (req, res) => {
   });
 });
 
-app.get('/api/instances/:id', (req, res) => {
+app.get('/api/instances/:id', requireAuth, (req, res) => {
   const instanceId = req.params.id;
   const configPath = `/etc/idve/${instanceId}.json`;
   
@@ -310,7 +365,7 @@ app.get('/api/instances/:id', (req, res) => {
   }
 });
 
-app.post('/api/instances', (req, res) => {
+app.post('/api/instances', requireAuth, (req, res) => {
   const {
     name, instanceId, host, osType, cdrom, cdroms, graphics, machine, bios, scsiController,
     addTpm, qemuAgent, diskBus, diskScsiController, storagePool, diskSize,
@@ -427,7 +482,7 @@ app.post('/api/instances', (req, res) => {
     res.json({ message: 'Instance created successfully', command: qemuCmd, config: instanceConfig });
 });
 
-app.put('/api/instances/:id', (req, res) => {
+app.put('/api/instances/:id', requireAuth, (req, res) => {
   const instanceId = req.params.id;
   const configPath = `/etc/idve/${instanceId}.json`;
   
@@ -449,7 +504,7 @@ app.put('/api/instances/:id', (req, res) => {
   }
 });
 
-app.put('/api/instances/:id/start', (req, res) => {
+app.put('/api/instances/:id/start', requireAuth, (req, res) => {
   const instanceId = req.params.id;
   const configPath = `/etc/idve/${instanceId}.json`;
   
@@ -615,7 +670,7 @@ app.put('/api/instances/:id/start', (req, res) => {
   }
 });
 
-app.put('/api/instances/:id/stop', (req, res) => {
+app.put('/api/instances/:id/stop', requireAuth, (req, res) => {
   const instanceId = req.params.id;
   const configPath = `/etc/idve/${instanceId}.json`;
   
@@ -655,7 +710,7 @@ app.put('/api/instances/:id/stop', (req, res) => {
   }
 });
 
-app.delete('/api/instances/:id', (req, res) => {
+app.delete('/api/instances/:id', requireAuth, (req, res) => {
   const instanceId = req.params.id;
   const diskPath = `/var/lib/idve/instances/${instanceId}.qcow2`;
   const configPath = `/etc/idve/${instanceId}.json`;
@@ -721,7 +776,7 @@ app.get('/api/instances/:id/vnc', (req, res) => {
 });
 
 // API routes for images
-app.get('/api/images', (req, res) => {
+app.get('/api/images', requireAuth, (req, res) => {
   const imagesDir = '/var/lib/idve/images';
   fs.readdir(imagesDir, (err, files) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -729,7 +784,7 @@ app.get('/api/images', (req, res) => {
   });
 });
 
-app.get('/api/isos', (req, res) => {
+app.get('/api/isos', requireAuth, (req, res) => {
   const isosDir = '/var/lib/idve/isos';
   fs.readdir(isosDir, (err, files) => {
     if (err) return res.status(500).json({ error: err.message });
@@ -738,7 +793,7 @@ app.get('/api/isos', (req, res) => {
 });
 
 // API routes for networks
-app.get('/api/networks', (req, res) => {
+app.get('/api/networks', requireAuth, (req, res) => {
   const { exec } = require('child_process');
   
   // Get network interfaces with addresses
@@ -841,7 +896,7 @@ app.get('/api/networks', (req, res) => {
   });
 });
 
-app.post('/api/networks', (req, res) => {
+app.post('/api/networks', requireAuth, (req, res) => {
   const { name, type, cidr, gateway, bridgePorts } = req.body;
   
   // Validate that bridge ports are not already in use
@@ -1007,7 +1062,7 @@ app.post('/api/networks', (req, res) => {
   }
 });
 
-app.put('/api/networks/:name', (req, res) => {
+app.put('/api/networks/:name', requireAuth, (req, res) => {
   const name = req.params.name;
   const { type, cidr, gateway, bridgePorts } = req.body;
   
@@ -1036,7 +1091,7 @@ app.put('/api/networks/:name', (req, res) => {
   res.json({ message: 'Network updated', network: updatedNetwork });
 });
 
-app.delete('/api/networks/:name', (req, res) => {
+app.delete('/api/networks/:name', requireAuth, (req, res) => {
   const name = req.params.name;
   
   // First check if it's a user-created network
@@ -1134,11 +1189,11 @@ let storages = [
   { name: 'Local', type: 'Local', content: 'Disk images', path: '/var/lib/idve/instances', shared: 'No', enabled: true }
 ];
 
-app.get('/api/storages', (req, res) => {
+app.get('/api/storages', requireAuth, (req, res) => {
   res.json(storages);
 });
 
-app.post('/api/storages', (req, res) => {
+app.post('/api/storages', requireAuth, (req, res) => {
   const { name, type, content, path } = req.body;
   const newStorage = {
     name,
@@ -1152,14 +1207,14 @@ app.post('/api/storages', (req, res) => {
   res.json({ message: 'Storage created' });
 });
 
-app.delete('/api/storages/:name', (req, res) => {
+app.delete('/api/storages/:name', requireAuth, (req, res) => {
   const name = req.params.name;
   storages = storages.filter(stor => stor.name !== name);
   res.json({ message: 'Storage deleted' });
 });
 
 // Cloud-Init API routes
-app.get('/api/cloudinit-templates', (req, res) => {
+app.get('/api/cloudinit-templates', requireAuth, (req, res) => {
   // Return available Cloud-Init templates
   const templates = [
     { id: 'web-server', name: 'Web Server (LAMP)', description: 'Apache, MySQL, PHP stack' },
@@ -1170,7 +1225,7 @@ app.get('/api/cloudinit-templates', (req, res) => {
   res.json(templates);
 });
 
-app.post('/api/instances/cloudinit', (req, res) => {
+app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   const {
     template,
     os,
