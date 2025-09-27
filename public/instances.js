@@ -223,8 +223,36 @@ function stopInstance(instanceId) {
 
 function deleteInstance(instanceId) {
   if (confirm('Are you sure you want to delete this instance? This action cannot be undone.')) {
-    fetch(`/api/instances/${instanceId}`, {
-      method: 'DELETE',
+    // First check if instance is running
+    fetch(`/api/instances/${instanceId}/status`)
+    .then(response => response.json())
+    .then(statusData => {
+      if (statusData.isRunning) {
+        // Instance is running, stop it first
+        alert('Instance is currently running. Stopping it before deletion...');
+        return fetch(`/api/instances/${instanceId}/stop`, {
+          method: 'PUT',
+        })
+        .then(response => response.json())
+        .then(stopData => {
+          if (stopData.message) {
+            alert('Instance stopped successfully. Now deleting...');
+            // Wait a moment for the stop to complete
+            return new Promise(resolve => setTimeout(resolve, 2000));
+          } else {
+            throw new Error(stopData.error || 'Failed to stop instance');
+          }
+        });
+      } else {
+        // Instance is already stopped, proceed with deletion
+        return Promise.resolve();
+      }
+    })
+    .then(() => {
+      // Now proceed with deletion
+      return fetch(`/api/instances/${instanceId}`, {
+        method: 'DELETE',
+      });
     })
     .then(response => response.json())
     .then(data => {
