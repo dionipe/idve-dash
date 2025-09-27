@@ -1259,37 +1259,37 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     case 'ubuntu-22.04':
       osSettings = {
         image: 'ubuntu-22.04-server-cloudimg-amd64.img',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: ubuntu\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/ubuntu\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    ubuntu:ubuntu\n  expire: false\n'
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: ubuntu\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/ubuntu\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    ubuntu:ubuntu\n  expire: false\n'
       };
       break;
     case 'freebsd-14.2':
       osSettings = {
         image: 'freebsd-14.2-zfs-2024-12-08.qcow2',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: freebsd\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/freebsd\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    freebsd:freebsd\n  expire: false\n'
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: freebsd\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/freebsd\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    freebsd:freebsd\n  expire: false\n'
       };
       break;
     case 'centos-stream-9':
       osSettings = {
         image: 'centos-stream-9-x86_64-boot.iso',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: centos\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/centos\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    centos:centos\n  expire: false\n'
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: centos\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/centos\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    centos:centos\n  expire: false\n'
       };
       break;
     case 'debian-11':
       osSettings = {
         image: 'debian-11-genericcloud-amd64.qcow2',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
       };
       break;
     case 'debian-13':
       osSettings = {
         image: 'debian-13-generic-amd64.qcow2',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
       };
       break;
     case 'rocky-9':
       osSettings = {
         image: 'rocky-9-x86_64-boot.iso',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - curl\n  - wget\nusers:\n  - name: rocky\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/rocky\n    shell: /bin/bash\n    lock_passwd: false\n    ssh-authorized-keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    rocky:rocky\n  expire: false\n'
+        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: rocky\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/rocky\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    rocky:rocky\n  expire: false\n'
       };
       break;
     default:
@@ -1324,7 +1324,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
 
   // Add password if provided
   if (password) {
-    userData = userData.replace(/ubuntu:ubuntu|centos:centos|debian:debian|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
+    userData = userData.replace(/ubuntu:ubuntu|centos:centos|debian:debian|freebsd:freebsd|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
   }
 
   if (additionalPackages.length > 0) {
@@ -1336,7 +1336,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     userData = userData.replace('${SSH_KEY}', sshKey);
   } else {
     // Remove SSH key section if not provided
-    userData = userData.replace(/\s*ssh-authorized-keys:[\s\S]*?(?=\n\w|$)/, '');
+    userData = userData.replace(/\s*ssh_authorized_keys:[\s\S]*?(?=\n\w|$)/, '');
   }
 
   // Add domain if provided
@@ -1344,33 +1344,8 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     userData += `\nmanage_etc_hosts: true\n`;
   }
 
-  // Add network configuration if enabled
-  if (networkConfig) {
-    let networkConfigStr = `\nnetwork:\n  version: 2\n  ethernets:\n    ens3:\n`;
-
-    // Add IP configuration if provided
-    if (ipAddressCIDR) {
-      networkConfigStr += `      addresses:\n        - ${ipAddressCIDR}\n`;
-    }
-
-    // Add gateway if provided
-    if (gateway) {
-      networkConfigStr += `      gateway4: ${gateway}\n`;
-    }
-
-    // Add DNS servers if provided
-    const dnsServers = [];
-    if (dns1) dnsServers.push(dns1);
-    if (dns2) dnsServers.push(dns2);
-    if (dnsServers.length > 0) {
-      networkConfigStr += `      nameservers:\n        addresses:\n`;
-      dnsServers.forEach(dns => {
-        networkConfigStr += `          - ${dns}\n`;
-      });
-    }
-
-    userData += networkConfigStr;
-  }
+  // Note: Network configuration is now handled in network-data file
+  // The network config in user-data has been moved to network-data for better CloudInit compatibility
 
   // Add hostname/domain configuration
   if (domain) {
@@ -1382,6 +1357,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   // Save user-data to file
   const userDataPath = `/var/lib/idve/cloudinit/${instanceId}-user-data`;
   const metaDataPath = `/var/lib/idve/cloudinit/${instanceId}-meta-data`;
+  const networkDataPath = `/var/lib/idve/cloudinit/${instanceId}-network-data`;
 
   // Ensure cloudinit directory exists
   if (!fs.existsSync('/var/lib/idve/cloudinit')) {
@@ -1391,8 +1367,42 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   // Create meta-data
   const metaData = `instance-id: ${instanceId}\nlocal-hostname: ${instanceName}\n`;
 
+  // Create network-data if network configuration is enabled
+  let networkData = '';
+  if (networkConfig) {
+    networkData = `version: 2\nethernets:\n  ens3:\n`;
+    
+    // Add IP configuration if provided
+    if (ipAddressCIDR) {
+      networkData += `    addresses:\n      - ${ipAddressCIDR}\n`;
+    } else {
+      networkData += `    dhcp4: true\n`;
+    }
+
+    // Add gateway if provided
+    if (gateway) {
+      networkData += `    gateway4: ${gateway}\n`;
+    }
+
+    // Add DNS servers if provided
+    const dnsServers = [];
+    if (dns1) dnsServers.push(dns1);
+    if (dns2) dnsServers.push(dns2);
+    if (dnsServers.length > 0) {
+      networkData += `    nameservers:\n      addresses:\n`;
+      dnsServers.forEach(dns => {
+        networkData += `        - ${dns}\n`;
+      });
+    }
+  }
+
   fs.writeFileSync(userDataPath, userData);
   fs.writeFileSync(metaDataPath, metaData);
+  
+  // Write network-data if network configuration is provided
+  if (networkData) {
+    fs.writeFileSync(networkDataPath, networkData);
+  }
 
   // Create Cloud-Init ISO
   const cloudInitIsoPath = `/var/lib/idve/cloudinit/${instanceId}-cloudinit.iso`;
@@ -1407,6 +1417,11 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   // Copy user-data and meta-data to ISO directory
   fs.copyFileSync(userDataPath, `${isoTempDir}/user-data`);
   fs.copyFileSync(metaDataPath, `${isoTempDir}/meta-data`);
+  
+  // Copy network-data if it exists
+  if (networkData) {
+    fs.copyFileSync(networkDataPath, `${isoTempDir}/network-config`);
+  }
   
   // Create Cloud-Init ISO using genisoimage or mkisofs
   exec(`genisoimage -output ${cloudInitIsoPath} -volid cidata -joliet -rock ${isoTempDir}/`, (isoErr) => {
