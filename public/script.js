@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 function initializeDashboard() {
   // Initialize all dashboard components
-  loadDashboardData();
+  loadDashboard();
   initResourceCharts();
   initNetworkTrafficChart();
   updateResourceCharts();
