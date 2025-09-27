@@ -298,15 +298,27 @@ function editInstance(instanceId) {
     setFieldValue('edit-disk-size', data.diskSize || '20');
     setFieldValue('edit-os-type', data.osType || 'linux');
 
-    // Cloud-Init fields (these might not exist in current API, so set defaults)
-    setFieldValue('edit-user', data.user || '');
+    // Cloud-Init fields
+    setFieldValue('edit-user', data.username || '');
     setFieldValue('edit-password', data.password || '');
-    setFieldValue('edit-dns-domain', data.dnsDomain || '');
-    setFieldValue('edit-dns-server', data.dnsServer || '');
+    setFieldValue('edit-domain', data.domain || '');
+    setFieldValue('edit-dns1', data.dns1 || '');
+    setFieldValue('edit-dns2', data.dns2 || '');
+    setFieldValue('edit-ip-address-cidr', data.ipAddressCIDR || '');
+    setFieldValue('edit-gateway', data.gateway || '');
     setFieldValue('edit-ssh-key', data.sshKey || '');
-    setFieldValue('edit-upgrade-package', data.upgradePackage || '');
-    setFieldValue('edit-additional-package', data.additionalPackage || '');
-    setFieldValue('edit-ip-config', data.ipConfig || '');
+    setFieldValue('edit-vlan-tag', data.vlanTag || '');
+    setFieldValue('edit-network-model', data.networkModel || 'virtio');
+
+    // Set checkboxes
+    const networkConfigCheckbox = document.getElementById('edit-network-config');
+    if (networkConfigCheckbox) {
+      networkConfigCheckbox.checked = data.networkConfig !== false; // Default to true if not specified
+    }
+    const diskResizeCheckbox = document.getElementById('edit-disk-resize');
+    if (diskResizeCheckbox) {
+      diskResizeCheckbox.checked = data.diskResize !== false; // Default to true if not specified
+    }
 
     // Options fields
     setFieldValue('edit-start-boot', (data.startAfterCreate || data.startBoot) ? 'true' : 'false');
@@ -323,6 +335,16 @@ function editInstance(instanceId) {
           if (networkBridgeSelect && data.networkBridge) {
             networkBridgeSelect.value = data.networkBridge;
             networkBridgeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }, 100);
+      }),
+      populateCloudInitBridges().then(() => {
+        // Set Cloud-Init bridge value after dropdown is populated
+        setTimeout(() => {
+          const cloudInitBridgeSelect = document.getElementById('edit-cloudinit-bridge');
+          if (cloudInitBridgeSelect && data.bridge) {
+            cloudInitBridgeSelect.value = data.bridge;
+            cloudInitBridgeSelect.dispatchEvent(new Event('change', { bubbles: true }));
           }
         }, 100);
       }),
@@ -409,14 +431,19 @@ function updateInstance() {
     osType: formData.get('osType') || 'linux',
 
     // Cloud-Init
-    user: formData.get('user') || '',
+    username: formData.get('username') || '',
     password: formData.get('password') || '',
-    dnsDomain: formData.get('dnsDomain') || '',
-    dnsServer: formData.get('dnsServer') || '',
+    domain: formData.get('domain') || '',
+    dns1: formData.get('dns1') || '',
+    dns2: formData.get('dns2') || '',
+    ipAddressCIDR: formData.get('ipAddressCIDR') || '',
+    gateway: formData.get('gateway') || '',
     sshKey: formData.get('sshKey') || '',
-    upgradePackage: formData.get('upgradePackage') || '',
-    additionalPackage: formData.get('additionalPackage') || '',
-    ipConfig: formData.get('ipConfig') || '',
+    bridge: formData.get('bridge') || '',
+    vlanTag: formData.get('vlanTag') || '',
+    networkModel: formData.get('networkModel') || 'virtio',
+    networkConfig: formData.get('networkConfig') === 'on',
+    diskResize: formData.get('diskResize') === 'on',
 
     // Options
     startBoot: formData.get('startBoot') === 'true',
@@ -500,6 +527,7 @@ function loadInstances() {
           const status = statuses[index];
           const isRunning = status.isRunning;
           const statusText = isRunning ? 'Running' : 'Stopped';
+          const ipAddress = status.ipAddress || '-';
 
           // Create table row
           const row = document.createElement('tr');
@@ -519,7 +547,7 @@ function loadInstances() {
               </span>
             </td>
             <td class="px-4 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
-              - <!-- IP Address not available in current API -->
+              ${ipAddress}
             </td>
             <td class="px-4 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
               ${instance.host}
@@ -711,42 +739,50 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Helper functions for edit modal
 function populateEditBridges() {
-  return fetch('/api/networks')
-  .then(response => response.json())
-  .then(data => {
-    const select = document.getElementById('edit-network-bridge');
-    if (select) {
-      select.innerHTML = '<option value="">Select Bridge</option>';
-      data.filter(network => network.type === 'bridge').forEach(bridge => {
-        const option = document.createElement('option');
-        option.value = bridge.name;
-        option.textContent = `${bridge.name} (${bridge.cidr || 'No IP'})`;
-        select.appendChild(option);
-      });
-    }
-  })
-  .catch(error => {
-    console.error('Error loading bridges:', error);
+  return new Promise((resolve, reject) => {
+    fetch('/api/networks')
+    .then(response => response.json())
+    .then(data => {
+      const select = document.getElementById('edit-network-bridge');
+      if (select) {
+        select.innerHTML = '<option value="">Select Bridge</option>';
+        data.filter(network => network.type === 'bridge').forEach(bridge => {
+          const option = document.createElement('option');
+          option.value = bridge.name;
+          option.textContent = `${bridge.name} (${bridge.cidr || 'No IP'})`;
+          select.appendChild(option);
+        });
+      }
+      resolve();
+    })
+    .catch(error => {
+      console.error('Error loading bridges:', error);
+      resolve(); // Resolve even on error
+    });
   });
 }
 
 function populateEditISOs() {
-  return fetch('/api/isos')
-  .then(response => response.json())
-  .then(data => {
-    const select = document.getElementById('edit-cdrom');
-    if (select) {
-      select.innerHTML = '<option value="">None</option>';
-      data.forEach(iso => {
-        const option = document.createElement('option');
-        option.value = `/var/lib/idve/isos/${iso}`;
-        option.textContent = iso;
-        select.appendChild(option);
-      });
-    }
-  })
-  .catch(error => {
-    console.error('Error loading ISOs:', error);
+  return new Promise((resolve, reject) => {
+    fetch('/api/isos')
+    .then(response => response.json())
+    .then(data => {
+      const select = document.getElementById('edit-cdrom');
+      if (select) {
+        select.innerHTML = '<option value="">None</option>';
+        data.forEach(iso => {
+          const option = document.createElement('option');
+          option.value = `/var/lib/idve/isos/${iso}`;
+          option.textContent = iso;
+          select.appendChild(option);
+        });
+      }
+      resolve();
+    })
+    .catch(error => {
+      console.error('Error loading ISOs:', error);
+      resolve(); // Resolve even on error
+    });
   });
 }
 
@@ -877,29 +913,61 @@ function populateCloudInitTemplates() {
 }
 
 function populateCloudInitBridges() {
-  fetch('/api/networks')
-  .then(response => response.json())
-  .then(data => {
-    const select = document.getElementById('cloudinit-bridge');
-    select.innerHTML = '<option value="virbr0">virbr0 (Default)</option>';
-    data.forEach(network => {
-      if (network.type === 'bridge') {
-        const option = document.createElement('option');
-        option.value = network.name;
-        option.textContent = `${network.name} (${network.ports || 'No interfaces'})`;
-        select.appendChild(option);
+  return new Promise((resolve, reject) => {
+    fetch('/api/networks')
+    .then(response => response.json())
+    .then(data => {
+      // Populate Cloud-Init create modal bridge
+      const createSelect = document.getElementById('cloudinit-bridge');
+      if (createSelect) {
+        createSelect.innerHTML = '<option value="virbr0">virbr0 (Default)</option>';
+        data.forEach(network => {
+          if (network.type === 'bridge') {
+            const option = document.createElement('option');
+            option.value = network.name;
+            option.textContent = `${network.name} (${network.ports || 'No interfaces'})`;
+            createSelect.appendChild(option);
+          }
+        });
       }
+
+      // Populate Cloud-Init edit modal bridge
+      const editSelect = document.getElementById('edit-cloudinit-bridge');
+      if (editSelect) {
+        editSelect.innerHTML = '<option value="">Select Bridge</option>';
+        data.forEach(network => {
+          if (network.type === 'bridge') {
+            const option = document.createElement('option');
+            option.value = network.name;
+            option.textContent = `${network.name} (${network.ports || 'No interfaces'})`;
+            editSelect.appendChild(option);
+          }
+        });
+      }
+      resolve();
+    })
+    .catch(error => {
+      console.error('Error loading Cloud-Init bridges:', error);
+      // Fallback to default options if API fails
+      const createSelect = document.getElementById('cloudinit-bridge');
+      if (createSelect) {
+        createSelect.innerHTML = `
+          <option value="virbr0">virbr0 (Default)</option>
+          <option value="br0">br0</option>
+          <option value="br1">br1</option>
+        `;
+      }
+      const editSelect = document.getElementById('edit-cloudinit-bridge');
+      if (editSelect) {
+        editSelect.innerHTML = `
+          <option value="">Select Bridge</option>
+          <option value="virbr0">virbr0</option>
+          <option value="br0">br0</option>
+          <option value="br1">br1</option>
+        `;
+      }
+      resolve(); // Resolve even on error
     });
-  })
-  .catch(error => {
-    console.error('Error loading bridges:', error);
-    // Fallback to default options if API fails
-    const select = document.getElementById('cloudinit-bridge');
-    select.innerHTML = `
-      <option value="virbr0">virbr0 (Default)</option>
-      <option value="br0">br0</option>
-      <option value="br1">br1</option>
-    `;
   });
 }
 
@@ -911,7 +979,6 @@ function createCloudInitInstance() {
     template: formData.get('template'),
     os: formData.get('os'),
     instanceName: formData.get('instanceName'),
-    ipAddress: formData.get('ipAddress'),
     sshKey: formData.get('sshKey'),
     networkConfig: formData.get('networkConfig') === 'on',
     diskResize: formData.get('diskResize') === 'on',
@@ -926,8 +993,8 @@ function createCloudInitInstance() {
     domain: formData.get('domain'),
     dns1: formData.get('dns1'),
     dns2: formData.get('dns2'),
-    // IP Configuration
-    ipAddressCIDR: formData.get('ipAddress'),
+    // IP Configuration - use CIDR format if provided, otherwise use custom IP
+    ipAddressCIDR: formData.get('ipAddress') || formData.get('customIpAddress'),
     gateway: formData.get('gateway')
   };
 

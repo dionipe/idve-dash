@@ -4,7 +4,9 @@
   "description": "Modern web-based dashboard for managing virtual machines",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node server.js > /var/log/idve-dash.log 2>&1 &",
+    "stop": "pkill -f 'node server.js'",
+    "restart": "npm run stop && sleep 2 && npm run start",
     "dev": "nodemon server.js"
   },
   "dependencies": {

@@ -540,10 +540,10 @@
         <div class="space-y-6">
           <h4 class="text-lg font-bold text-slate-900 dark:text-white border-b border-slate-200 dark:border-slate-700 pb-2">Cloud-Init (if active)</h4>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- User -->
+            <!-- Username -->
             <div class="relative">
-              <input type="text" id="edit-user" name="user" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
-              <label class="floating-label" for="edit-user">User</label>
+              <input type="text" id="edit-user" name="username" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-user">Username</label>
             </div>
 
             <!-- Password -->
@@ -552,40 +552,77 @@
               <label class="floating-label" for="edit-password">Password</label>
             </div>
 
-            <!-- DNS Domain -->
+            <!-- Domain -->
             <div class="relative">
-              <input type="text" id="edit-dns-domain" name="dnsDomain" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
-              <label class="floating-label" for="edit-dns-domain">DNS Domain</label>
+              <input type="text" id="edit-domain" name="domain" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-domain">Domain</label>
             </div>
 
-            <!-- DNS Server -->
+            <!-- DNS Server 1 -->
             <div class="relative">
-              <input type="text" id="edit-dns-server" name="dnsServer" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
-              <label class="floating-label" for="edit-dns-server">DNS Server</label>
+              <input type="text" id="edit-dns1" name="dns1" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-dns1">DNS Server 1</label>
+            </div>
+
+            <!-- DNS Server 2 -->
+            <div class="relative">
+              <input type="text" id="edit-dns2" name="dns2" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-dns2">DNS Server 2</label>
+            </div>
+
+            <!-- IP Address/CIDR -->
+            <div class="relative">
+              <input type="text" id="edit-ip-address-cidr" name="ipAddressCIDR" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-ip-address-cidr">IP Address/CIDR</label>
+            </div>
+
+            <!-- Gateway -->
+            <div class="relative">
+              <input type="text" id="edit-gateway" name="gateway" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-gateway">Gateway</label>
+            </div>
+
+            <!-- Bridge -->
+            <div class="relative">
+              <select id="edit-cloudinit-bridge" name="bridge" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="">Select Bridge</option>
+                <!-- Bridges will be populated via JS -->
+              </select>
+              <label class="floating-label" for="edit-cloudinit-bridge">Bridge</label>
+            </div>
+
+            <!-- VLAN Tag -->
+            <div class="relative">
+              <input type="number" id="edit-vlan-tag" name="vlanTag" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+              <label class="floating-label" for="edit-vlan-tag">VLAN Tag</label>
+            </div>
+
+            <!-- Network Model -->
+            <div class="relative">
+              <select id="edit-network-model" name="networkModel" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="virtio">virtio</option>
+                <option value="e1000">e1000</option>
+                <option value="rtl8139">rtl8139</option>
+              </select>
+              <label class="floating-label" for="edit-network-model">Network Model</label>
             </div>
 
             <!-- SSH Public Key -->
             <div class="relative md:col-span-2">
-              <textarea id="edit-ssh-key" name="sshKey" placeholder=" " rows="4" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow"></textarea>
+              <textarea id="edit-ssh-key" name="sshKey" placeholder=" " rows="4" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow resize-none"></textarea>
               <label class="floating-label" for="edit-ssh-key">SSH Public Key</label>
             </div>
 
-            <!-- Upgrade Package -->
-            <div class="relative">
-              <input type="text" id="edit-upgrade-package" name="upgradePackage" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
-              <label class="floating-label" for="edit-upgrade-package">Upgrade Package</label>
-            </div>
-
-            <!-- Additional Package -->
-            <div class="relative">
-              <input type="text" id="edit-additional-package" name="additionalPackage" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
-              <label class="floating-label" for="edit-additional-package">Additional Package</label>
-            </div>
-
-            <!-- IP Config -->
-            <div class="relative md:col-span-2">
-              <input type="text" id="edit-ip-config" name="ipConfig" placeholder=" " class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
-              <label class="floating-label" for="edit-ip-config">IP Config</label>
+            <!-- Network Config & Disk Resize Checkboxes -->
+            <div class="md:col-span-2 flex gap-6">
+              <div class="flex items-center">
+                <input type="checkbox" id="edit-network-config" name="networkConfig" class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800/50 text-primary focus:ring-primary">
+                <label class="ml-2 block text-sm text-slate-700 dark:text-slate-300" for="edit-network-config">Enable Network Configuration</label>
+              </div>
+              <div class="flex items-center">
+                <input type="checkbox" id="edit-disk-resize" name="diskResize" class="h-4 w-4 rounded border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800/50 text-primary focus:ring-primary">
+                <label class="ml-2 block text-sm text-slate-700 dark:text-slate-300" for="edit-disk-resize">Auto-resize Disk</label>
+              </div>
             </div>
           </div>
         </div>
@@ -724,7 +761,7 @@
           <!-- Custom IP Address -->
           <div class="relative floating-label-group">
             <span class="material-symbols-outlined absolute top-1/2 left-4 -translate-y-1/2 text-slate-400">network_ping</span>
-            <input type="text" id="cloudinit-ip" name="ipAddress" placeholder=" " class="form-input w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 pl-11 pr-4 py-3 focus:border-primary focus:ring-primary">
+            <input type="text" id="cloudinit-ip" name="customIpAddress" placeholder=" " class="form-input w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 pl-11 pr-4 py-3 focus:border-primary focus:ring-primary">
             <label class="floating-label text-slate-500 dark:text-slate-400" for="cloudinit-ip">Custom IP Address (optional)</label>
           </div>
 

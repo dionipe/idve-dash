@@ -598,7 +598,11 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           
           // Add QEMU agent
           if (config.qemuAgent) {
-            qemuCmd += ` -device virtio-serial -chardev socket,path=/var/lib/libvirt/qemu/${config.id}.agent,server,nowait,id=agent_${config.id} -device virtserialport,chardev=agent_${config.id},name=org.qemu.guest_agent.0`;
+            // Ensure agent socket directory exists
+            const agentSocketDir = `/var/lib/libvirt/qemu/domain-${config.id}`;
+            exec(`mkdir -p ${agentSocketDir}`, () => {
+              qemuCmd += ` -chardev socket,path=${agentSocketDir}/agent.sock,server,nowait,id=agent_${config.id} -device virtserialport,chardev=agent_${config.id},name=org.qemu.guest_agent.0`;
+            });
           }
           
           // Add balloon device
@@ -734,6 +738,79 @@ app.delete('/api/instances/:id', requireAuth, (req, res) => {
   });
 });
 
+// Helper function to get IP address from running instance using qemu-guest-agent
+function getInstanceIPAddress(instanceId, config, callback) {
+  // Try to get IP address using qemu-guest-agent
+  // First, find the QEMU process and its monitor socket
+  const instanceName = config.name;
+  
+  // Look for the QEMU process and extract the guest agent socket path
+  exec(`ps aux | grep 'qemu-system-x86_64.*-name "${instanceName}"' | grep -v grep`, (error, stdout, stderr) => {
+    if (error || !stdout.trim()) {
+      return callback(new Error('Instance not running'), null);
+    }
+    
+    // Try to use virsh/qemu-agent if available, otherwise try direct socket communication
+    // For simplicity, let's try using socat or direct socket communication to guest agent
+    
+    // The guest agent socket is typically at /var/lib/libvirt/qemu/domain-{instanceId}/agent.sock
+    const agentSocket = `/var/lib/libvirt/qemu/domain-${instanceId}/agent.sock`;
+    
+    // Check if agent socket exists
+    if (fs.existsSync(agentSocket)) {
+      // Use socat to communicate with the guest agent
+      const socatCmd = `echo '{"execute": "guest-network-get-interfaces"}' | socat - UNIX-CONNECT:${agentSocket}`;
+      
+      exec(socatCmd, (agentError, agentStdout, agentStderr) => {
+        if (agentError) {
+          console.log('Guest agent communication failed, trying alternative method');
+          // Try alternative: check if we can use virsh
+          tryVirshCommand(instanceId, callback);
+        } else {
+          try {
+            const response = JSON.parse(agentStdout);
+            if (response.return && response.return.length > 0) {
+              // Find the first interface with IP addresses
+              for (const iface of response.return) {
+                if (iface['ip-addresses'] && iface['ip-addresses'].length > 0) {
+                  // Find IPv4 address
+                  const ipv4Addr = iface['ip-addresses'].find(addr => addr['ip-address-type'] === 'ipv4');
+                  if (ipv4Addr && ipv4Addr['ip-address']) {
+                    return callback(null, ipv4Addr['ip-address']);
+                  }
+                }
+              }
+            }
+            callback(null, null); // No IP found
+          } catch (parseError) {
+            console.error('Error parsing guest agent response:', parseError);
+            tryVirshCommand(instanceId, callback);
+          }
+        }
+      });
+    } else {
+      // No agent socket found, try virsh if available
+      tryVirshCommand(instanceId, callback);
+    }
+  });
+}
+
+// Fallback method using virsh if available
+function tryVirshCommand(instanceId, callback) {
+  // Try using virsh domifaddr if libvirt is available
+  exec(`virsh domifaddr ${instanceId} 2>/dev/null | grep -oP 'ipv4\\s+\\K[0-9.]+/[0-9]+' | head -1 | cut -d'/' -f1`, (virshError, virshStdout, virshStderr) => {
+    if (!virshError && virshStdout.trim()) {
+      const ip = virshStdout.trim();
+      if (ip && ip !== '127.0.0.1') {
+        return callback(null, ip);
+      }
+    }
+    
+    // If all methods fail, return null
+    callback(null, null);
+  });
+}
+
 app.get('/api/instances/:id/status', (req, res) => {
   const instanceId = req.params.id;
   const configPath = `/etc/idve/${instanceId}.json`;
@@ -751,11 +828,25 @@ app.get('/api/instances/:id/status', (req, res) => {
     // Use the same logic as in start endpoint: check for qemu-system-x86_64 with instance name
     exec(`ps aux | grep 'qemu-system-x86_64.*-name "${instanceName}"' | grep -v grep`, (error, stdout, stderr) => {
       const isRunning = stdout.trim() !== '';
-      res.json({ 
-        instanceId: instanceId,
-        isRunning: isRunning,
-        status: isRunning ? 'running' : 'stopped'
-      });
+      
+      // If instance is running and has qemu-guest-agent, try to get IP address
+      if (isRunning && config.qemuAgent) {
+        getInstanceIPAddress(instanceId, config, (ipError, ipAddress) => {
+          res.json({ 
+            instanceId: instanceId,
+            isRunning: isRunning,
+            status: isRunning ? 'running' : 'stopped',
+            ipAddress: ipAddress || null
+          });
+        });
+      } else {
+        res.json({ 
+          instanceId: instanceId,
+          isRunning: isRunning,
+          status: isRunning ? 'running' : 'stopped',
+          ipAddress: null
+        });
+      }
     });
   } catch (error) {
     console.error('Error checking instance status:', error);
@@ -1253,43 +1344,206 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   // Generate unique instance ID
   const instanceId = `cloudinit-${Date.now()}`;
 
+  // Generate random MAC address for this instance
+  function generateRandomMac() {
+    const mac = ['52', '54', '00'];
+    for (let i = 0; i < 3; i++) {
+      mac.push(Math.floor(Math.random() * 256).toString(16).padStart(2, '0'));
+    }
+    return mac.join(':');
+  }
+  const macAddress = generateRandomMac();
+
   // Determine OS-specific settings
   let osSettings = {};
   switch (os) {
     case 'ubuntu-22.04':
       osSettings = {
         image: 'ubuntu-22.04-server-cloudimg-amd64.img',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: ubuntu\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/ubuntu\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    ubuntu:ubuntu\n  expire: false\n'
+        userDataTemplate: `#cloud-config
+hostname: ${instanceName}
+users:
+  - name: ${username}
+    lock_passwd: false
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${sshKey || ''}
+ssh_pwauth: true
+disk_setup:
+  /dev/vda:
+    table_type: gpt
+    layout: true
+    overwrite: false
+fs_setup:
+  - label: cloudimg-rootfs
+    filesystem: ext4
+    device: /dev/vda1
+    partition: auto
+    overwrite: false
+growpart:
+  mode: auto
+  devices: ['/']
+  ignore_growroot_disabled: false
+packages:
+  - openssh-server
+  - net-tools
+  - qemu-guest-agent
+  - cloud-guest-utils
+  - gdisk
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - echo "${username}:${password || 'ubuntu'}" | chpasswd
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+  - growpart /dev/vda 1
+  - resize2fs /dev/vda1
+  - df -h
+`
       };
       break;
     case 'freebsd-14.2':
       osSettings = {
         image: 'freebsd-14.2-zfs-2024-12-08.qcow2',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: freebsd\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, admin\n    home: /home/freebsd\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    freebsd:freebsd\n  expire: false\n'
+        userDataTemplate: `#cloud-config
+hostname: ${instanceName}
+users:
+  - name: ${username}
+    lock_passwd: false
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: wheel
+    shell: /bin/sh
+    ssh_authorized_keys:
+      - ${sshKey || ''}
+ssh_pwauth: true
+packages:
+  - openssh-portable
+  - qemu-guest-agent
+runcmd:
+  - sysrc sshd_enable=YES
+  - service sshd start
+  - echo "${username}:${password || 'freebsd'}" | chpasswd
+  - sed -i '' 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - service sshd restart
+`
       };
       break;
     case 'centos-stream-9':
       osSettings = {
         image: 'centos-stream-9-x86_64-boot.iso',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: centos\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/centos\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    centos:centos\n  expire: false\n'
+        userDataTemplate: `#cloud-config
+hostname: ${instanceName}
+users:
+  - name: ${username}
+    lock_passwd: false
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, wheel
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${sshKey || ''}
+ssh_pwauth: true
+packages:
+  - openssh-server
+  - net-tools
+  - qemu-guest-agent
+  - cloud-guest-utils
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - echo "${username}:${password || 'centos'}" | chpasswd
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+`
       };
       break;
     case 'debian-11':
       osSettings = {
         image: 'debian-11-genericcloud-amd64.qcow2',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
+        userDataTemplate: `#cloud-config
+hostname: ${instanceName}
+users:
+  - name: ${username}
+    lock_passwd: false
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, sudo
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${sshKey || ''}
+ssh_pwauth: true
+packages:
+  - openssh-server
+  - net-tools
+  - qemu-guest-agent
+  - cloud-guest-utils
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - echo "${username}:${password || 'debian'}" | chpasswd
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+`
       };
       break;
     case 'debian-13':
       osSettings = {
         image: 'debian-13-generic-amd64.qcow2',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: debian\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, sudo\n    home: /home/debian\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    debian:debian\n  expire: false\n'
+        userDataTemplate: `#cloud-config
+hostname: ${instanceName}
+users:
+  - name: ${username}
+    lock_passwd: false
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, sudo
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${sshKey || ''}
+ssh_pwauth: true
+packages:
+  - openssh-server
+  - net-tools
+  - qemu-guest-agent
+  - cloud-guest-utils
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - echo "${username}:${password || 'debian'}" | chpasswd
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+`
       };
       break;
     case 'rocky-9':
       osSettings = {
         image: 'rocky-9-x86_64-boot.iso',
-        userDataTemplate: '#cloud-config\npackage_update: true\npackage_upgrade: true\npackages:\n  - qemu-guest-agent\n  - curl\n  - wget\nusers:\n  - name: rocky\n    sudo: ALL=(ALL) NOPASSWD:ALL\n    groups: users, wheel\n    home: /home/rocky\n    shell: /bin/bash\n    lock_passwd: false\n    ssh_authorized_keys:\n      - ${SSH_KEY}\nssh_pwauth: false\nchpasswd:\n  list: |\n    rocky:rocky\n  expire: false\n'
+        userDataTemplate: `#cloud-config
+hostname: ${instanceName}
+users:
+  - name: ${username}
+    lock_passwd: false
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, wheel
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${sshKey || ''}
+chpasswd:
+  list: |
+    rocky:rocky
+  expire: false
+ssh_pwauth: true
+packages:
+  - openssh-server
+  - net-tools
+  - qemu-guest-agent
+  - cloud-guest-utils
+runcmd:
+  - systemctl enable ssh
+  - systemctl start ssh
+  - echo "${username}:${password || 'rocky'}" | chpasswd
+  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+  - systemctl restart ssh
+`
       };
       break;
     default:
@@ -1322,11 +1576,20 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     userData = userData.replace(new RegExp(`${defaultUser}:${defaultUser}`, 'g'), `${username}:${password || username}`);
   }
 
-  // Add password if provided
-  if (password) {
-    userData = userData.replace(/ubuntu:ubuntu|centos:centos|debian:debian|freebsd:freebsd|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
-  }
+  // // Add password if provided
+  // if (password) {
+  //   userData = userData.replace(/'${username || 'ubuntu'}':${password}|centos:centos|debian:debian|freebsd:freebsd|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
+  // }
 
+  // Add disk resize command if enabled
+  if (diskResize) {
+    if (!userData.includes('growpart')) {
+      userData += '\ngrowpart:\n  mode: auto\n  devices: [\'/\']\n  ignore_growroot_disabled: false\n';
+    }
+    if (!userData.includes('resize2fs')) {
+      userData += '\nruncmd:\n  - growpart /dev/vda 1\n  - resize2fs /dev/vda1\n';
+    }
+  }
   if (additionalPackages.length > 0) {
     userData += '\npackages:\n' + additionalPackages.map(pkg => `  - ${pkg}`).join('\n');
   }
@@ -1371,6 +1634,10 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   let networkData = '';
   if (networkConfig) {
     networkData = `version: 2\nethernets:\n  ens3:\n`;
+    
+    // Add MAC address matching
+    networkData += `    match:\n      macaddress: "${macAddress}"\n`;
+    networkData += `    set-name: ens3\n`;
     
     // Add IP configuration if provided
     if (ipAddressCIDR) {
@@ -1496,6 +1763,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
       networkBridge: bridge || 'virbr0',
       vlanTag: vlanTag || null,
       networkModel: networkModel || 'virtio',
+      macAddress: macAddress, // Add random MAC address
       // User Configuration
       username: username || null,
       password: password || null,
@@ -1510,6 +1778,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
       graphics: 'virtio',
       machine: 'q35',
       bios: 'seabios',
+      qemuAgent: true, // Enable qemu-guest-agent for IP detection
       createdAt: new Date().toISOString(),
       status: 'created'
     };
