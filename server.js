@@ -1005,74 +1005,97 @@ app.delete('/api/instances/:id', requireAuth, (req, res) => {
 
 // Helper function to get IP address from running instance using qemu-guest-agent
 function getInstanceIPAddress(instanceId, config, callback) {
-  // Try to get IP address using qemu-guest-agent
-  // First, find the QEMU process and its monitor socket
   const instanceName = config.name;
-  
-  // Look for the QEMU process and extract the guest agent socket path
-  exec(`ps aux | grep 'qemu-system-x86_64.*-name "${instanceName}"' | grep -v grep`, (error, stdout, stderr) => {
-    if (error || !stdout.trim()) {
-      return callback(new Error('Instance not running'), null);
-    }
-    
-    // Try to use virsh/qemu-agent if available, otherwise try direct socket communication
-    // For simplicity, let's try using socat or direct socket communication to guest agent
-    
-    // The guest agent socket is typically at /var/lib/libvirt/qemu/domain-{instanceId}/agent.sock
-    const agentSocket = `/var/lib/libvirt/qemu/domain-${instanceId}/agent.sock`;
-    
-    // Check if agent socket exists
-    if (fs.existsSync(agentSocket)) {
-      // Use socat to communicate with the guest agent
-      const socatCmd = `echo '{"execute": "guest-network-get-interfaces"}' | socat - UNIX-CONNECT:${agentSocket}`;
-      
-      exec(socatCmd, (agentError, agentStdout, agentStderr) => {
-        if (agentError) {
-          console.log('Guest agent communication failed, trying alternative method');
-          // Try alternative: check if we can use virsh
-          tryVirshCommand(instanceId, callback);
-        } else {
-          try {
-            const response = JSON.parse(agentStdout);
-            if (response.return && response.return.length > 0) {
-              // Find the first interface with IP addresses
-              for (const iface of response.return) {
-                if (iface['ip-addresses'] && iface['ip-addresses'].length > 0) {
-                  // Find IPv4 address
-                  const ipv4Addr = iface['ip-addresses'].find(addr => addr['ip-address-type'] === 'ipv4');
-                  if (ipv4Addr && ipv4Addr['ip-address']) {
-                    return callback(null, ipv4Addr['ip-address']);
+  const macAddress = config.macAddress;
+
+  // If instance is running and has qemu-guest-agent, try to get IP address via guest agent first
+  if (config.qemuAgent) {
+    // Look for the QEMU process and extract the guest agent socket path
+    exec(`ps aux | grep 'qemu-system-x86_64.*-name "${instanceName}"' | grep -v grep`, (error, stdout, stderr) => {
+      if (error || !stdout.trim()) {
+        return tryDHCPMethods(instanceId, config, callback);
+      }
+
+      // Try to use virsh/qemu-agent if available, otherwise try direct socket communication to guest agent
+
+      // The guest agent socket is typically at /var/lib/libvirt/qemu/domain-{instanceId}/agent.sock
+      const agentSocket = `/var/lib/libvirt/qemu/domain-${instanceId}/agent.sock`;
+
+      // Check if agent socket exists
+      if (fs.existsSync(agentSocket)) {
+        // Use socat to communicate with the guest agent
+        const socatCmd = `echo '{"execute": "guest-network-get-interfaces"}' | socat - UNIX-CONNECT:${agentSocket}`;
+
+        exec(socatCmd, (agentError, agentStdout, agentStderr) => {
+          if (agentError) {
+            console.log('Guest agent communication failed, trying DHCP methods');
+            tryDHCPMethods(instanceId, config, callback);
+          } else {
+            try {
+              const response = JSON.parse(agentStdout);
+              if (response.return && response.return.length > 0) {
+                // Find the first interface with IP addresses
+                for (const iface of response.return) {
+                  if (iface['ip-addresses'] && iface['ip-addresses'].length > 0) {
+                    // Find IPv4 address
+                    const ipv4Addr = iface['ip-addresses'].find(addr => addr['ip-address-type'] === 'ipv4');
+                    if (ipv4Addr && ipv4Addr['ip-address']) {
+                      return callback(null, ipv4Addr['ip-address']);
+                    }
                   }
                 }
               }
+              // No IP found via guest agent, try DHCP methods
+              tryDHCPMethods(instanceId, config, callback);
+            } catch (parseError) {
+              console.error('Error parsing guest agent response:', parseError);
+              tryDHCPMethods(instanceId, config, callback);
             }
-            callback(null, null); // No IP found
-          } catch (parseError) {
-            console.error('Error parsing guest agent response:', parseError);
-            tryVirshCommand(instanceId, callback);
           }
-        }
-      });
-    } else {
-      // No agent socket found, try virsh if available
-      tryVirshCommand(instanceId, callback);
-    }
-  });
+        });
+      } else {
+        // No agent socket found, try DHCP methods
+        tryDHCPMethods(instanceId, config, callback);
+      }
+    });
+  } else {
+    // No guest agent, directly try DHCP methods
+    tryDHCPMethods(instanceId, config, callback);
+  }
 }
 
-// Fallback method using virsh if available
-function tryVirshCommand(instanceId, callback) {
-  // Try using virsh domifaddr if libvirt is available
-  exec(`virsh domifaddr ${instanceId} 2>/dev/null | grep -oP 'ipv4\\s+\\K[0-9.]+/[0-9]+' | head -1 | cut -d'/' -f1`, (virshError, virshStdout, virshStderr) => {
-    if (!virshError && virshStdout.trim()) {
-      const ip = virshStdout.trim();
-      if (ip && ip !== '127.0.0.1') {
-        return callback(null, ip);
-      }
+// Try to get IP address using DHCP-related methods (ARP table, DHCP leases, etc.)
+function tryDHCPMethods(instanceId, config, callback) {
+  const macAddress = config.macAddress;
+
+  if (!macAddress) {
+    return callback(null, null);
+  }
+
+  console.log(`Trying DHCP methods for instance ${instanceId} with MAC ${macAddress}`);
+
+  // Method 1: Check ARP table for the MAC address
+  exec(`ip neigh show | grep "${macAddress}" | awk '{print $1}' | head -1`, (arpError, arpStdout, arpStderr) => {
+    if (!arpError && arpStdout.trim() && arpStdout.trim() !== '') {
+      const ipFromArp = arpStdout.trim();
+      console.log(`Found IP ${ipFromArp} in ARP table for MAC ${macAddress}`);
+      return callback(null, ipFromArp);
     }
-    
-    // If all methods fail, return null
-    callback(null, null);
+
+    // Method 2: Check DHCP leases file if it exists
+    exec(`grep -i "${macAddress}" /var/lib/dhcp/dhcpd.leases 2>/dev/null | grep -oP 'lease \\K[0-9.]+' | tail -1`, (dhcpError, dhcpStdout, dhcpStderr) => {
+      if (!dhcpError && dhcpStdout.trim() && dhcpStdout.trim() !== '') {
+        const ipFromDhcp = dhcpStdout.trim();
+        console.log(`Found IP ${ipFromDhcp} in DHCP leases for MAC ${macAddress}`);
+        return callback(null, ipFromDhcp);
+      }
+
+      // Method 3: Check if instance is connected to a bridge and look for IP in bridge fdb
+      // This is more complex and might not be reliable, so we'll skip for now
+
+      console.log(`No IP address found for instance ${instanceId} with MAC ${macAddress}`);
+      callback(null, null);
+    });
   });
 }
 
