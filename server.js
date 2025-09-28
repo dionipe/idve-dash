@@ -1616,6 +1616,36 @@ app.post('/api/networks', requireAuth, (req, res) => {
     });
   }
   
+  // Add bridge to QEMU bridge.conf if it's a bridge
+  if (type === 'bridge') {
+    try {
+      const fs = require('fs');
+      const bridgeConfPath = '/etc/qemu/bridge.conf';
+      
+      // Read current bridge.conf content
+      let bridgeConfContent = '';
+      if (fs.existsSync(bridgeConfPath)) {
+        bridgeConfContent = fs.readFileSync(bridgeConfPath, 'utf8');
+      }
+      
+      // Check if bridge is already allowed
+      const allowedBridges = bridgeConfContent.split('\n').map(line => line.trim());
+      const allowLine = `allow ${name}`;
+      
+      if (!allowedBridges.includes(allowLine)) {
+        // Add the bridge to allowed list
+        bridgeConfContent += (bridgeConfContent ? '\n' : '') + allowLine;
+        fs.writeFileSync(bridgeConfPath, bridgeConfContent);
+        console.log(`Added bridge ${name} to /etc/qemu/bridge.conf`);
+      } else {
+        console.log(`Bridge ${name} already allowed in /etc/qemu/bridge.conf`);
+      }
+    } catch (error) {
+      console.error('Error updating /etc/qemu/bridge.conf:', error);
+      // Don't fail the entire operation if this fails
+    }
+  }
+  
   // Bring up the interface using ifup instead of restarting networking
   const { exec } = require('child_process');
   exec(`ifup ${name}`, (error, stdout, stderr) => {
@@ -1683,9 +1713,34 @@ app.delete('/api/networks/:name', requireAuth, (req, res) => {
   
   // First check if it's a user-created network
   const networkIndex = networks.findIndex(net => net.name === name);
+  let networkType = null;
   if (networkIndex !== -1) {
+    networkType = networks[networkIndex].type;
     // Remove from in-memory array
     networks.splice(networkIndex, 1);
+  }
+  
+  // Remove bridge from QEMU bridge.conf if it's a bridge
+  if (networkType === 'bridge') {
+    try {
+      const fs = require('fs');
+      const bridgeConfPath = '/etc/qemu/bridge.conf';
+      
+      if (fs.existsSync(bridgeConfPath)) {
+        let bridgeConfContent = fs.readFileSync(bridgeConfPath, 'utf8');
+        const lines = bridgeConfContent.split('\n');
+        
+        // Remove the allow line for this bridge
+        const filteredLines = lines.filter(line => line.trim() !== `allow ${name}`);
+        
+        // Write back the updated content
+        fs.writeFileSync(bridgeConfPath, filteredLines.join('\n'));
+        console.log(`Removed bridge ${name} from /etc/qemu/bridge.conf`);
+      }
+    } catch (error) {
+      console.error('Error updating /etc/qemu/bridge.conf:', error);
+      // Don't fail the entire operation if this fails
+    }
   }
   
   // Try to remove from /etc/network/interfaces and bring down the interface
