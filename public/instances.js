@@ -1,8 +1,16 @@
-// Instances management functions
-const socket = io();
-let currentStep = 0;
-const totalSteps = 8;
+// Generate random MAC address for VMs
+function generateRandomMac() {
+  const mac = ['52', '54', '00']; // QEMU OUI prefix
+  for (let i = 0; i < 3; i++) {
+    mac.push(Math.floor(Math.random() * 256).toString(16).padStart(2, '0'));
+  }
+  return mac.join(':');
+}
+
+// Global variables
 let isLoadingInstances = false;
+let currentStep = 0;
+let totalSteps = 3;
 
 function showCreateInstanceModal() {
   document.getElementById('modal').classList.remove('hidden');
@@ -21,6 +29,48 @@ function showCreateInstanceModal() {
 
   // Set hostname dynamically
   document.getElementById('host').value = window.location.hostname || 'idve-08';
+
+  // Add event listener for OS type changes to set Windows defaults
+  // setupOSTypeListener(); // Moved to global scope
+}
+
+function setupOSTypeListener() {
+  const osTypeSelect = document.getElementById('os-type');
+  if (osTypeSelect) {
+    osTypeSelect.addEventListener('change', function() {
+      const selectedOS = this.value;
+      if (selectedOS === 'windows') {
+        // Set Windows-specific defaults for best performance (per Proxmox best practices)
+        const biosEl = document.getElementById('bios');
+        const machineEl = document.getElementById('machine');
+        const tpmEl = document.getElementById('add-tpm');
+        const qemuEl = document.getElementById('qemu-agent');
+        const balloonEl = document.getElementById('balloon-device');
+        const cpuEl = document.getElementById('cpu-type');
+        const networkEl = document.getElementById('network-model');
+        
+        if (biosEl) biosEl.value = 'ovmf';
+        if (machineEl) machineEl.value = 'q35';
+        if (tpmEl) tpmEl.checked = true;
+        if (qemuEl) qemuEl.checked = true; // Enable QEMU Agent for Windows
+        if (balloonEl) balloonEl.checked = true; // Enable balloon device for dynamic memory
+        if (cpuEl) cpuEl.value = 'Skylake-Client-v3';
+        if (networkEl) networkEl.value = 'virtio'; // VirtIO for best performance
+      } else if (selectedOS === 'linux') {
+        // Set Linux defaults
+        const biosEl = document.getElementById('bios');
+        const machineEl = document.getElementById('machine');
+        const tpmEl = document.getElementById('add-tpm');
+        const qemuEl = document.getElementById('qemu-agent');
+        
+        if (biosEl) biosEl.value = 'seabios';
+        if (machineEl) machineEl.value = 'pc';
+        if (tpmEl) tpmEl.checked = false;
+        if (qemuEl) qemuEl.checked = true; // Keep enabled for Linux too
+      }
+      // For 'other', keep current values
+    });
+  }
 }
 
 function closeModal() {
@@ -80,6 +130,12 @@ function generateSummary() {
   const formData = new FormData(document.getElementById('create-instance-form'));
   const summaryTable = document.getElementById('config-summary');
 
+  // Generate MAC address preview if not provided
+  let macAddressDisplay = formData.get('macAddress');
+  if (!macAddressDisplay || macAddressDisplay.trim() === '') {
+    macAddressDisplay = 'Auto-generated (52:54:00:XX:XX:XX)';
+  }
+
   const summaryData = [
     { key: 'Host/Node', value: formData.get('host') },
     { key: 'Instance ID', value: formData.get('instanceId') },
@@ -104,7 +160,7 @@ function generateSummary() {
     { key: 'Network Bridge', value: formData.get('networkBridge') || 'None' },
     { key: 'VLAN Tag', value: formData.get('vlanTag') || 'None' },
     { key: 'Network Model', value: formData.get('networkModel') || 'virtio' },
-    { key: 'MAC Address', value: formData.get('macAddress') || 'Auto' },
+    { key: 'MAC Address', value: macAddressDisplay },
     { key: 'Start After Create', value: formData.get('startAfterCreate') === 'on' ? 'Yes' : 'No' }
   ];
 
@@ -127,6 +183,12 @@ function createInstance() {
   if (!instanceId || instanceId.trim() === '') {
     alert('Instance ID is required');
     return;
+  }
+
+  // Auto-generate MAC address if not provided
+  let macAddress = formData.get('macAddress');
+  if (!macAddress || macAddress.trim() === '') {
+    macAddress = generateRandomMac();
   }
 
   const instanceData = {
@@ -153,7 +215,7 @@ function createInstance() {
     networkBridge: formData.get('networkBridge'),
     vlanTag: formData.get('vlanTag'),
     networkModel: formData.get('networkModel') || 'virtio',
-    macAddress: formData.get('macAddress'),
+    macAddress: macAddress,
     startAfterCreate: formData.get('startAfterCreate') === 'on'
   };
 
@@ -185,13 +247,17 @@ function createInstance() {
 function startInstance(instanceId) {
   fetch(`/api/instances/${instanceId}/start`, {
     method: 'PUT',
+    credentials: 'include',
   })
   .then(response => response.json())
   .then(data => {
     if (data.message) {
       alert(`Instance started successfully!`);
-      loadInstances();
-      loadDashboard();
+      // Wait a moment for the start operation to complete
+      setTimeout(() => {
+        loadInstances();
+        loadDashboard();
+      }, 2000);
     } else {
       alert(`Error: ${data.error}`);
     }
@@ -205,13 +271,17 @@ function startInstance(instanceId) {
 function stopInstance(instanceId) {
   fetch(`/api/instances/${instanceId}/stop`, {
     method: 'PUT',
+    credentials: 'include',
   })
   .then(response => response.json())
   .then(data => {
     if (data.message) {
       alert(`Instance stopped successfully!`);
-      loadInstances();
-      loadDashboard();
+      // Wait a moment for the stop operation to complete
+      setTimeout(() => {
+        loadInstances();
+        loadDashboard();
+      }, 2000);
     } else {
       alert(`Error: ${data.error}`);
     }
@@ -225,7 +295,9 @@ function stopInstance(instanceId) {
 function deleteInstance(instanceId) {
   if (confirm('Are you sure you want to delete this instance? This action cannot be undone.')) {
     // First check if instance is running
-    fetch(`/api/instances/${instanceId}/status`)
+    fetch(`/api/instances/${instanceId}/status`, {
+      credentials: 'include'
+    })
     .then(response => response.json())
     .then(statusData => {
       if (statusData.isRunning) {
@@ -233,6 +305,7 @@ function deleteInstance(instanceId) {
         alert('Instance is currently running. Stopping it before deletion...');
         return fetch(`/api/instances/${instanceId}/stop`, {
           method: 'PUT',
+          credentials: 'include',
         })
         .then(response => response.json())
         .then(stopData => {
@@ -253,6 +326,7 @@ function deleteInstance(instanceId) {
       // Now proceed with deletion
       return fetch(`/api/instances/${instanceId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
     })
     .then(response => response.json())
@@ -273,7 +347,9 @@ function deleteInstance(instanceId) {
 }
 
 function editInstance(instanceId) {
-  fetch(`/api/instances/${instanceId}`)
+  fetch(`/api/instances/${instanceId}`, {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     // Store instance ID
@@ -296,7 +372,7 @@ function editInstance(instanceId) {
     setFieldValue('edit-graphics', data.graphics || 'virtio');
     setFieldValue('edit-machine', data.machine || 'pc');
     setFieldValue('edit-scsi-controller', data.scsiController || 'virtio-scsi-pci');
-    setFieldValue('edit-disk-size', data.diskSize || '20');
+    setFieldValue('edit-disk-size', data.diskSize || '10');
     setFieldValue('edit-os-type', data.osType || 'linux');
 
     // Cloud-Init fields
@@ -463,6 +539,7 @@ function updateInstance() {
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     body: JSON.stringify(updateData),
   })
   .then(response => response.json())
@@ -518,7 +595,9 @@ function loadInstances() {
 
     // Check status for all instances
     const statusPromises = data.map(instance =>
-      fetch(`/api/instances/${instance.id}/status`)
+      fetch(`/api/instances/${instance.id}/status`, {
+        credentials: 'include'
+      })
       .then(response => response.json())
       .catch(() => ({ isRunning: false, status: 'stopped' }))
     );
@@ -677,15 +756,32 @@ function populateEditBridges() {
   .then(response => response.json())
   .then(data => {
     const select = document.getElementById('edit-network-bridge');
-    select.innerHTML = '<option value="">Select Bridge</option>';
-    data.forEach(network => {
-      if (network.type === 'bridge') {
+    if (select) {
+      select.innerHTML = '<option value="">Select Bridge</option>';
+      data.filter(network => network.type === 'bridge').forEach(bridge => {
         const option = document.createElement('option');
-        option.value = network.name;
-        option.textContent = `${network.name} (${network.ports || 'No interfaces'})`;
+        option.value = bridge.name;
+        option.textContent = `${bridge.name} (${bridge.cidr || 'No IP'})`;
         select.appendChild(option);
-      }
-    });
+      });
+    }
+  });
+}
+
+function populateCloudInitBridges() {
+  fetch('/api/networks')
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('cloudinit-bridge');
+    if (select) { 
+      select.innerHTML = '<option value="">Select Bridge</option>';
+      data.filter(network => network.type === 'bridge').forEach(bridge => {
+        const option = document.createElement('option');
+        option.value = bridge.name;
+        option.textContent = `${bridge.name} (${bridge.cidr || 'No IP'})`;
+        select.appendChild(option);
+      });
+    }
   });
 }
 
@@ -1139,4 +1235,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Load initial data only once
   loadInstances();
   loadDashboard();
+  
+  // Setup OS type listener for form defaults
+  setupOSTypeListener();
 });

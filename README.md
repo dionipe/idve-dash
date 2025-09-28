@@ -36,6 +36,9 @@ A modern, web-based dashboard for managing virtual machines and network infrastr
 - **Real-time monitoring** via WebSocket connections
 - **Multiple storage formats** (QCOW2, RAW)
 - **Network configuration** with bridge and VLAN support
+- **MAC address auto-generation** with uniqueness validation
+- **TPM 2.0 emulation** for Windows VMs
+- **VirtIO drivers** for optimal performance
 
 ### Network Management
 - **Bridge creation and management** with physical interface bonding

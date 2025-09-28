@@ -366,7 +366,7 @@ app.get('/api/instances/:id', requireAuth, (req, res) => {
 });
 
 app.post('/api/instances', requireAuth, (req, res) => {
-  const {
+  let {
     name, instanceId, host, osType, cdrom, cdroms, graphics, machine, bios, scsiController,
     addTpm, qemuAgent, diskBus, diskScsiController, storagePool, diskSize,
     cpuSockets, cpuCores, cpuType, memory, balloonDevice, networkBridge,
@@ -376,6 +376,36 @@ app.post('/api/instances', requireAuth, (req, res) => {
   // Handle both single cdrom and cdroms array for backward compatibility
   const allCdroms = cdroms || (cdrom ? [cdrom] : []);
 
+  // Validate and ensure unique MAC address
+  if (!macAddress || macAddress.trim() === '') {
+    // Auto-generate MAC address if not provided
+    const generateRandomMac = () => {
+      const mac = ['52', '54', '00'];
+      for (let i = 0; i < 3; i++) {
+        mac.push(Math.floor(Math.random() * 256).toString(16).padStart(2, '0'));
+      }
+      return mac.join(':');
+    };
+    macAddress = generateRandomMac();
+  }
+
+  // Check if MAC address is already in use by other instances
+  const instancesDir = '/etc/idve';
+  if (fs.existsSync(instancesDir)) {
+    const files = fs.readdirSync(instancesDir).filter(file => file.endsWith('.json'));
+    for (const file of files) {
+      try {
+        const configPath = `${instancesDir}/${file}`;
+        const existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (existingConfig.macAddress === macAddress && existingConfig.id !== instanceId) {
+          return res.status(400).json({ error: `MAC address ${macAddress} is already in use by instance ${existingConfig.id}` });
+        }
+      } catch (error) {
+        console.error(`Error checking MAC address in ${file}:`, error);
+      }
+    }
+  }
+
   // Build QEMU command with all parameters
   let qemuCmd = `qemu-system-x86_64 -name ${name} -m ${memory} -smp sockets=${cpuSockets},cores=${cpuCores} -cpu ${cpuType}`;
 
@@ -384,20 +414,28 @@ app.post('/api/instances', requireAuth, (req, res) => {
 
   // Add BIOS
   if (bios === 'ovmf') {
-    // Use OVMF with Secure Boot for Windows 11 compatibility
-    qemuCmd += ' -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd';
-    qemuCmd += ' -drive if=pflash,format=raw,file=/usr/share/OVMF/OVMF_VARS_4M.fd';
+    // Use OVMF with Secure Boot for Windows 11 compatibility - use standard path from successful guide
+    qemuCmd += ' -drive if=pflash,format=raw,readonly=on,file=/usr/share/ovmf/OVMF_CODE.fd';
+    qemuCmd += ' -drive if=pflash,format=raw,file=/usr/share/ovmf/OVMF_VARS.fd';
   }
 
   // Add disk
   const diskPath = `${storagePool}/${name}.qcow2`;
-  qemuCmd += ` -drive file=${diskPath},format=qcow2`;
+  if (osType === 'windows') {
+    // Use VirtIO SCSI Single for Windows VMs (best performance per Proxmox best practices)
+    qemuCmd += ` -device virtio-scsi-pci,id=scsi0`;
+    qemuCmd += ` -drive file=${diskPath},format=qcow2,if=none,id=drive0,cache=writeback,discard=on`;
+    qemuCmd += ` -device scsi-hd,drive=drive0,bus=scsi0.0`;
+  } else {
+    // Use IDE for Linux VMs
+    qemuCmd += ` -drive file=${diskPath},format=qcow2,if=ide,index=0`;
+  }
 
   // Add CDROM(s) if specified
   allCdroms.forEach((cdromPath, index) => {
     if (cdromPath) {
-      // Use simple cdrom option for better UEFI compatibility
-      qemuCmd += ` -cdrom ${cdromPath}`;
+      // Use explicit drive with index to avoid conflicts, start from index 1
+      qemuCmd += ` -drive file=${cdromPath},if=ide,index=${index + 1},media=cdrom`;
     }
   });
 
@@ -415,8 +453,8 @@ app.post('/api/instances', requireAuth, (req, res) => {
   // Add graphics
   qemuCmd += ` -vga ${graphics}`;
 
-  // Add SCSI controller if needed
-  if (diskBus === 'scsi' || scsiController) {
+  // Add SCSI controller if needed (skip for Windows as we use VirtIO SCSI Single)
+  if ((diskBus === 'scsi' || scsiController) && osType !== 'windows') {
     qemuCmd += ` -device ${scsiController}`;
   }
 
@@ -580,6 +618,14 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
     // Read instance config first
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     
+    // Auto-enable TPM for Windows VMs with OVMF if not already enabled
+    if (config.osType === 'windows' && config.bios === 'ovmf' && !config.addTpm) {
+      console.log(`Auto-enabling TPM for Windows VM ${config.id}`);
+      config.addTpm = true;
+      // Save updated config
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    }
+    
     // Check if already running
     exec(`ps aux | grep 'qemu-system-x86_64.*-name "${config.name}"' | grep -v grep`, (error, stdout, stderr) => {
       if (stdout.trim() !== '') {
@@ -588,22 +634,23 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
       
       // Build QEMU command
       let cpuModel = config.cpuType || 'host';
-      // For Windows 11 compatibility, prefer host CPU passthrough when available
-      // Only fallback to qemu64 if explicitly requested or if host passthrough fails
-      if (cpuModel === 'host') {
-        // Keep host CPU for better Windows compatibility
+      // For Windows 11 compatibility, use Skylake-Client-v3 as per successful guide
+      if (config.osType === 'windows') {
+        cpuModel = 'Skylake-Client-v3';
+      } else if (cpuModel === 'host') {
+        // Keep host CPU for better Linux compatibility
         cpuModel = 'host';
       }
       let qemuCmd = `qemu-system-x86_64 -enable-kvm -name "${config.name}" -m ${config.memory} -smp sockets=${config.cpuSockets},cores=${config.cpuCores} -cpu ${cpuModel}`;
       
       // Add machine type
-      qemuCmd += ` -machine q35`;
+      qemuCmd += ` -machine ${config.machine || 'q35'}`;
       
       // Add BIOS
       if (config.bios === 'ovmf') {
-        // Use OVMF with Secure Boot for Windows 11 compatibility
-        qemuCmd += ' -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd';
-        qemuCmd += ' -drive if=pflash,format=raw,file=/usr/share/OVMF/OVMF_VARS_4M.fd';
+        // Use OVMF with Secure Boot for Windows 11 compatibility - use standard path from successful guide
+        qemuCmd += ' -drive if=pflash,format=raw,readonly=on,file=/usr/share/ovmf/OVMF_CODE.fd';
+        qemuCmd += ' -drive if=pflash,format=raw,file=/usr/share/ovmf/OVMF_VARS.fd';
       }
       
         // Add disk
@@ -627,7 +674,15 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
         
         function startQemu() {
           // Simplified QEMU command that works
-          qemuCmd += ` -drive file=${diskPath},format=qcow2`;
+          if (config.osType === 'windows') {
+            // Use VirtIO SCSI Single for Windows VMs (best performance per Proxmox best practices)
+            qemuCmd += ` -device virtio-scsi-pci,id=scsi0`;
+            qemuCmd += ` -drive file=${diskPath},format=qcow2,if=none,id=drive0,cache=writeback,discard=on`;
+            qemuCmd += ` -device scsi-hd,drive=drive0,bus=scsi0.0`;
+          } else {
+            // Use IDE for Linux VMs
+            qemuCmd += ` -drive file=${diskPath},format=qcow2,if=ide,index=0`;
+          }
           
           // Add Cloud-Init drive if this is a Cloud-Init instance
           if (config.cloudInit && config.cloudInitIsoPath) {
@@ -638,14 +693,15 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           const cdroms = config.cdroms || (config.cdrom ? [config.cdrom] : []);
           cdroms.forEach((cdrom, index) => {
             if (cdrom) {
-              // Use simple cdrom option for better UEFI compatibility
-              qemuCmd += ` -cdrom ${cdrom}`;
+              // Use explicit drive with index to avoid conflicts, start from index 1
+              qemuCmd += ` -drive file=${cdrom},if=ide,index=${index + 1},media=cdrom`;
             }
           });
           
           // Add network using bridge from config
           if (config.networkBridge) {
-            qemuCmd += ` -net nic,model=${config.networkModel || 'virtio'}`;
+            const networkModel = config.osType === 'windows' ? 'virtio' : (config.networkModel || 'virtio');
+            qemuCmd += ` -net nic,model=${networkModel}`;
             if (config.macAddress) {
               qemuCmd += `,macaddr=${config.macAddress}`;
             }
@@ -680,22 +736,42 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           
           // Add TPM if configured
           if (config.addTpm && config.tpmStatePath) {
-            // Start swtpm emulator
-            const swtpmCmd = `swtpm socket --tpmstate dir=${config.tpmStatePath},mode=0600 --ctrl type=unixio,path=${config.tpmSocketPath} --tpm2 --daemon --pid file=${config.tpmPidPath}`;
-            console.log(`Starting swtpm: ${swtpmCmd}`);
-            
-            exec(swtpmCmd, (swtpmErr, swtpmOut, swtpmStderr) => {
-              if (swtpmErr) {
-                console.error('Error starting swtpm:', swtpmErr);
-                // Continue anyway, TPM is optional
-                startQemu(false);
-              } else {
-                console.log('swTPM started successfully');
-                // Wait a moment for swTPM to be ready
-                setTimeout(() => {
-                  startQemu(true);
-                }, 1000);
-              }
+            // Clean up any existing swtpm processes and files more aggressively
+            exec(`pkill -9 -f swtpm || true`, () => {
+              exec(`rm -rf /tmp/emulated_tpm || true`, () => {
+                // Create TPM directory
+                exec(`mkdir -p /tmp/emulated_tpm`, () => {
+                  // Remove socket and pid files if they exist
+                  try {
+                    if (fs.existsSync('/tmp/emulated_tpm/swtpm-sock')) fs.unlinkSync('/tmp/emulated_tpm/swtpm-sock');
+                    if (fs.existsSync('/tmp/emulated_tpm/swtpm.pid')) fs.unlinkSync('/tmp/emulated_tpm/swtpm.pid');
+                  } catch (e) {
+                    // Ignore cleanup errors
+                  }
+                  
+                  // Wait a moment for cleanup
+                  setTimeout(() => {
+                    // Start swtpm emulator with standard path from successful guide
+                    const swtpmCmd = `swtpm socket --tpmstate dir=/tmp/emulated_tpm --ctrl type=unixio,path=/tmp/emulated_tpm/swtpm-sock --tpm2 --daemon --pid file=/tmp/emulated_tpm/swtpm.pid`;
+                    console.log(`Starting swtpm: ${swtpmCmd}`);
+                    
+                    exec(swtpmCmd, (swtpmErr, swtpmOut, swtpmStderr) => {
+                      if (swtpmErr) {
+                        console.error('Error starting swtpm:', swtpmErr);
+                        console.log('Continuing without TPM - Windows may not boot properly');
+                        // Continue without TPM
+                        startQemu(false);
+                      } else {
+                        console.log('swTPM started successfully');
+                        // Wait a moment for swTPM to be ready
+                        setTimeout(() => {
+                          startQemu(true);
+                        }, 1000);
+                      }
+                    });
+                  }, 500);
+                });
+              });
             });
           } else {
             startQemu(false);
@@ -704,13 +780,15 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           function startQemu(withTpm) {
             // Add TPM device to QEMU command if TPM is enabled and ready
             if (withTpm) {
-              qemuCmd += ` -chardev socket,id=tpmchar,path=${config.tpmSocketPath}`;
-              qemuCmd += ` -tpmdev emulator,id=tpmdev,chardev=tpmchar`;
-              qemuCmd += ` -device tpm-tis,tpmdev=tpmdev`;
+              qemuCmd += ` -chardev socket,id=chrtpm,path=/tmp/emulated_tpm/swtpm-sock`;
+              qemuCmd += ` -tpmdev emulator,id=tpm0,chardev=chrtpm`;
+              qemuCmd += ` -device tpm-tis,tpmdev=tpm0`;
             }
             
             // Add sound card for better malware analysis compatibility
-            // qemuCmd += ` -device intel-hda -device hda-duplex`;
+            if (config.osType === 'windows') {
+              qemuCmd += ` -device intel-hda -device hda-duplex`;
+            }
             
             // Add USB support
             qemuCmd += ` -usb`;
@@ -759,21 +837,24 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           const qemuVncPort = 5900 + instanceNum; // Exact VNC port QEMU will use
           const baseWsPort = 7900 + instanceNum; // WebSocket port
           
-          // Find available WebSocket port for websockify
-          findAvailablePort(baseWsPort, (wsPortErr, wsPort) => {
-            if (wsPortErr) {
-              console.error('Failed to find available WebSocket port:', wsPortErr);
-              return;
-            }
-            
-            // Connect websockify directly to the VNC port QEMU is using
-            exec(`websockify --daemon ${wsPort} localhost:${qemuVncPort}`, (wsError, wsOut, wsStderr) => {
-              if (wsError) {
-                console.error('Warning: Failed to start websockify:', wsError);
-                // Don't fail the VM start if websockify fails
-              } else {
-                console.log(`Started websockify on port ${wsPort} proxying to VNC port ${qemuVncPort}`);
+          // Clean up any existing websockify processes for this instance
+          exec(`pkill -f "websockify.*localhost:${qemuVncPort}" || true`, () => {
+            // Find available WebSocket port for websockify
+            findAvailablePort(baseWsPort, (wsPortErr, wsPort) => {
+              if (wsPortErr) {
+                console.error('Failed to find available WebSocket port:', wsPortErr);
+                return;
               }
+              
+              // Connect websockify directly to the VNC port QEMU is using
+              exec(`websockify --daemon ${wsPort} localhost:${qemuVncPort}`, (wsError, wsOut, wsStderr) => {
+                if (wsError) {
+                  console.error('Warning: Failed to start websockify:', wsError);
+                  // Don't fail the VM start if websockify fails
+                } else {
+                  console.log(`Started websockify on port ${wsPort} proxying to VNC port ${qemuVncPort}`);
+                }
+              });
             });
           });
           
@@ -806,43 +887,46 @@ app.put('/api/instances/:id/stop', requireAuth, (req, res) => {
     const instanceName = config.name;
     
     // Find and kill QEMU process using the same logic as status checking
-    exec(`pkill -f 'qemu-system-x86_64.*-name "${instanceName}"'`, (error, stdout, stderr) => {
+    exec(`pkill -9 -f "qemu-system-x86_64.*-name ${instanceName}"`, (error, stdout, stderr) => {
       // Note: pkill returns error if no processes found, but that's OK for us
       // as it means the instance is already stopped
       
-      // Also kill websockify process for this instance
-      const instanceNum = parseInt(instanceId.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
-      const wsPort = 7900 + instanceNum;
-      // Kill websockify processes in a range around the expected port
-      exec(`pkill -f "websockify.*${wsPort}" || pkill -f "websockify.*$((wsPort-5))" || pkill -f "websockify.*$((wsPort+5))"`, (wsError, wsOut, wsStderr) => {
-        // Note: pkill returns error if no processes found, that's OK
-        console.log(`Stopped websockify processes around port ${wsPort}`);
-      });
-      
-      // Stop swtpm if TPM was configured
-      if (config.addTpm && config.tpmPidPath && fs.existsSync(config.tpmPidPath)) {
-        try {
-          const tpmPid = fs.readFileSync(config.tpmPidPath, 'utf8').trim();
-          exec(`kill ${tpmPid}`, (killErr) => {
-            if (killErr) {
-              console.error('Error stopping swtpm:', killErr);
-            } else {
-              console.log('swTPM stopped successfully');
-              // Clean up PID file
-              fs.unlinkSync(config.tpmPidPath);
-            }
-          });
-        } catch (pidErr) {
-          console.error('Error reading TPM PID file:', pidErr);
+      // Wait a moment for the process to actually terminate
+      setTimeout(() => {
+        // Also kill websockify process for this instance
+        const instanceNum = parseInt(instanceId.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
+        const wsPort = 7900 + instanceNum;
+        // Kill websockify processes in a range around the expected port
+        exec(`pkill -f "websockify.*${wsPort}" || pkill -f "websockify.*$((wsPort-5))" || pkill -f "websockify.*$((wsPort+5))"`, (wsError, wsOut, wsStderr) => {
+          // Note: pkill returns error if no processes found, that's OK
+          console.log(`Stopped websockify processes around port ${wsPort}`);
+        });
+        
+        // Stop swtpm if TPM was configured
+        if (config.addTpm && config.tpmPidPath && fs.existsSync(config.tpmPidPath)) {
+          try {
+            const tpmPid = fs.readFileSync(config.tpmPidPath, 'utf8').trim();
+            exec(`kill ${tpmPid}`, (killErr) => {
+              if (killErr) {
+                console.error('Error stopping swtpm:', killErr);
+              } else {
+                console.log('swTPM stopped successfully');
+                // Clean up PID file
+                fs.unlinkSync(config.tpmPidPath);
+              }
+            });
+          } catch (pidErr) {
+            console.error('Error reading TPM PID file:', pidErr);
+          }
         }
-      }
-      
-      // Update instance status
-      config.status = 'stopped';
-      config.stoppedAt = new Date().toISOString();
-      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      
-      res.json({ message: 'Instance stopped successfully' });
+        
+        // Update instance status
+        config.status = 'stopped';
+        config.stoppedAt = new Date().toISOString();
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+        
+        res.json({ message: 'Instance stopped successfully' });
+      }, 3000); // Wait 3 seconds for QEMU to terminate
     });
   } catch (error) {
     console.error('Error stopping instance:', error);
@@ -1887,7 +1971,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   if (networkData) {
     fs.writeFileSync(networkDataPath, networkData);
   }
-
+  
   // Create Cloud-Init ISO
   const cloudInitIsoPath = `/var/lib/idve/cloudinit/${instanceId}-cloudinit.iso`;
   const instanceDiskPath = `/var/lib/idve/instances/${instanceId}.qcow2`;

@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js > /var/log/idve-dash.log 2>&1 &",
     "stop": "pkill -f 'node server.js'",
-    "restart": "npm run stop && sleep 2 && npm run start",
+    "status": "netstat -tuln | grep :3000",
     "dev": "nodemon server.js"
   },
   "dependencies": {
