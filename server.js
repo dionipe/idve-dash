@@ -1007,7 +1007,7 @@ app.get('/api/instances/:id/status', (req, res) => {
     
     // Check if QEMU process is running for this instance
     // Use the same logic as in start endpoint: check for qemu-system-x86_64 with instance name
-    exec(`ps aux | grep 'qemu-system-x86_64.*-name "${instanceName}"' | grep -v grep`, (error, stdout, stderr) => {
+    exec(`ps aux | grep 'qemu-system-x86_64.*-name ${instanceName}' | grep -v grep`, (error, stdout, stderr) => {
       const isRunning = stdout.trim() !== '';
       
       // If instance is running and has qemu-guest-agent, try to get IP address
