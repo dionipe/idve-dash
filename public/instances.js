@@ -162,6 +162,7 @@ function createInstance() {
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     body: JSON.stringify(instanceData),
   })
   .then(response => response.json())
@@ -319,6 +320,10 @@ function editInstance(instanceId) {
     if (diskResizeCheckbox) {
       diskResizeCheckbox.checked = data.diskResize !== false; // Default to true if not specified
     }
+    const tpmCheckbox = document.getElementById('edit-tpm');
+    if (tpmCheckbox) {
+      tpmCheckbox.checked = data.addTpm === true;
+    }
 
     // Options fields
     setFieldValue('edit-start-boot', (data.startAfterCreate || data.startBoot) ? 'true' : 'false');
@@ -444,6 +449,7 @@ function updateInstance() {
     networkModel: formData.get('networkModel') || 'virtio',
     networkConfig: formData.get('networkConfig') === 'on',
     diskResize: formData.get('diskResize') === 'on',
+    addTpm: formData.get('addTpm') === 'on',
 
     // Options
     startBoot: formData.get('startBoot') === 'true',
@@ -494,7 +500,9 @@ function loadInstances() {
   if (noInstances) noInstances.classList.add('hidden');
   if (tbody) tbody.innerHTML = '';
 
-  fetch('/api/instances')
+  fetch('/api/instances', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     console.log('Received instances data:', data.length, 'instances');
@@ -646,7 +654,9 @@ function populateISOs() {
 }
 
 function populateBridges() {
-  fetch('/api/networks')
+  fetch('/api/networks', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     const select = document.getElementById('network-bridge');
@@ -871,7 +881,9 @@ function closeCloudInitModal() {
 
 function populateCloudInitTemplates() {
   // Fetch available cloud-init templates from the server
-  fetch('/api/cloudinit-templates')
+  fetch('/api/cloudinit-templates', {
+    credentials: 'include'
+  })
     .then(response => response.json())
     .then(templates => {
       const templateSelect = document.getElementById('cloudinit-template');
@@ -887,34 +899,40 @@ function populateCloudInitTemplates() {
         option.textContent = template.name;
         templateSelect.appendChild(option);
       });
+
+      // Check URL parameters for template selection
+      const urlParams = new URLSearchParams(window.location.search);
+      const selectedTemplate = urlParams.get('template');
+      if (selectedTemplate) {
+        templateSelect.value = selectedTemplate;
+        // Trigger change event to update form if needed
+        templateSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     })
     .catch(error => {
       console.error('Error loading cloud-init templates:', error);
-      // Fallback to static options if API fails
+      // Show error message instead of fallback options
       const templateSelect = document.getElementById('cloudinit-template');
       // Clear existing options except the first one
       while (templateSelect.options.length > 1) {
         templateSelect.remove(1);
       }
-      // Add fallback options
-      const fallbackOptions = [
-        { id: 'web-server', name: 'Web Server (LAMP)' },
-        { id: 'development', name: 'Development (Node.js)' },
-        { id: 'database', name: 'Database (PostgreSQL)' },
-        { id: 'custom', name: 'Custom' }
-      ];
-      fallbackOptions.forEach(template => {
-        const option = document.createElement('option');
-        option.value = template.id;
-        option.textContent = template.name;
-        templateSelect.appendChild(option);
-      });
+      // Add error option
+      const errorOption = document.createElement('option');
+      errorOption.value = '';
+      errorOption.textContent = 'Error loading templates - please refresh';
+      errorOption.disabled = true;
+      templateSelect.appendChild(errorOption);
+      
+      showNotification('Failed to load CloudInit templates. Please refresh the page.', 'error');
     });
 }
 
 function populateCloudInitBridges() {
   return new Promise((resolve, reject) => {
-    fetch('/api/networks')
+    fetch('/api/networks', {
+      credentials: 'include'
+    })
     .then(response => response.json())
     .then(data => {
       // Populate Cloud-Init create modal bridge
@@ -975,20 +993,43 @@ function createCloudInitInstance() {
   const form = document.getElementById('cloudinit-form');
   const formData = new FormData(form);
 
+  // Validate required fields
+  const templateId = formData.get('template');
+  const instanceName = formData.get('instanceName');
+  const username = formData.get('username');
+  const password = formData.get('password');
+
+  if (!templateId) {
+    showNotification('Please select a CloudInit template', 'error');
+    return;
+  }
+  if (!instanceName) {
+    showNotification('Instance name is required', 'error');
+    return;
+  }
+  if (!username) {
+    showNotification('Username is required', 'error');
+    return;
+  }
+  if (!password) {
+    showNotification('Password is required', 'error');
+    return;
+  }
+
   const instanceData = {
-    template: formData.get('template'),
-    os: formData.get('os'),
-    instanceName: formData.get('instanceName'),
+    templateId: templateId,
+    instanceName: instanceName,
     sshKey: formData.get('sshKey'),
     networkConfig: formData.get('networkConfig') === 'on',
     diskResize: formData.get('diskResize') === 'on',
+    addTpm: formData.get('addTpm') === 'on',
     // Network Configuration
     bridge: formData.get('bridge'),
     vlanTag: formData.get('vlanTag'),
     networkModel: formData.get('networkModel'),
     // User Configuration
-    username: formData.get('username'),
-    password: formData.get('password'),
+    username: username,
+    password: password,
     // Domain & DNS
     domain: formData.get('domain'),
     dns1: formData.get('dns1'),
@@ -1009,9 +1050,17 @@ function createCloudInitInstance() {
     headers: {
       'Content-Type': 'application/json',
     },
+    credentials: 'include',
     body: JSON.stringify(instanceData)
   })
-  .then(response => response.json())
+  .then(response => {
+    if (!response.ok) {
+      return response.json().then(err => {
+        throw new Error(err.error || 'Server error');
+      });
+    }
+    return response.json();
+  })
   .then(data => {
     if (data.success) {
       closeCloudInitModal();

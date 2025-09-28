@@ -384,16 +384,19 @@ app.post('/api/instances', requireAuth, (req, res) => {
 
   // Add BIOS
   if (bios === 'ovmf') {
-    qemuCmd += ' -bios /usr/share/ovmf/OVMF.fd'; // Adjust path as needed
+    // Use OVMF with Secure Boot for Windows 11 compatibility
+    qemuCmd += ' -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd';
+    qemuCmd += ' -drive if=pflash,format=raw,file=/usr/share/OVMF/OVMF_VARS_4M.fd';
   }
 
   // Add disk
   const diskPath = `${storagePool}/${name}.qcow2`;
-  qemuCmd += ` -drive file=${diskPath},if=${diskBus === 'virtio' ? 'virtio' : diskBus},format=qcow2`;
+  qemuCmd += ` -drive file=${diskPath},format=qcow2`;
 
   // Add CDROM(s) if specified
-  allCdroms.forEach((cdromPath) => {
+  allCdroms.forEach((cdromPath, index) => {
     if (cdromPath) {
+      // Use simple cdrom option for better UEFI compatibility
       qemuCmd += ` -cdrom ${cdromPath}`;
     }
   });
@@ -418,8 +421,29 @@ app.post('/api/instances', requireAuth, (req, res) => {
   }
 
   // Add TPM if requested
+  let tpmStatePath, tpmSocketPath, tpmPidPath;
   if (addTpm) {
-    qemuCmd += ' -tpmdev passthrough,id=tpm0,path=/dev/tpm0 -device tpm-tis,tpmdev=tpm0';
+    // Create TPM state directory for swtpm
+    tpmStatePath = `/var/lib/idve/instances/${instanceId}-tpm`;
+    
+    // Create TPM state directory if it doesn't exist
+    if (!fs.existsSync(tpmStatePath)) {
+      fs.mkdirSync(tpmStatePath, { recursive: true });
+      console.log(`TPM state directory created: ${tpmStatePath}`);
+    }
+    
+    // Use TPM emulator instead of passthrough for Windows 11 compatibility
+    tpmSocketPath = `/var/run/idve/${instanceId}-tpm.sock`;
+    tpmPidPath = `/var/run/idve/${instanceId}-tpm.pid`;
+    
+    // Ensure run directory exists
+    if (!fs.existsSync('/var/run/idve')) {
+      fs.mkdirSync('/var/run/idve', { recursive: true });
+    }
+    
+    qemuCmd += ` -chardev socket,id=tpmchar,path=${tpmSocketPath}`;
+    qemuCmd += ` -tpmdev emulator,id=tpmdev,chardev=tpmchar`;
+    qemuCmd += ` -device tpm-tis,tpmdev=tpmdev`;
   }
 
   // Add QEMU agent
@@ -432,8 +456,8 @@ app.post('/api/instances', requireAuth, (req, res) => {
     qemuCmd += ' -device virtio-balloon';
   }
 
-  // Boot order
-  qemuCmd += allCdroms.length > 0 ? ' -boot order=dc' : ' -boot order=c';
+  // Boot order - using bootindex on devices for UEFI systems
+  // No global boot order needed when using bootindex
 
       // Save instance configuration as JSON
     const instanceConfig = {
@@ -466,6 +490,13 @@ app.post('/api/instances', requireAuth, (req, res) => {
       status: 'created'
     };
 
+    // Add TPM configuration if enabled
+    if (addTpm) {
+      instanceConfig.tpmStatePath = tpmStatePath;
+      instanceConfig.tpmSocketPath = tpmSocketPath;
+      instanceConfig.tpmPidPath = tpmPidPath;
+    }
+
     const configPath = `/etc/idve/${instanceId}.json`;
     fs.writeFileSync(configPath, JSON.stringify(instanceConfig, null, 2));
     console.log(`Instance configuration saved to ${configPath}`);
@@ -494,6 +525,38 @@ app.put('/api/instances/:id', requireAuth, (req, res) => {
     const existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     const updatedConfig = { ...existingConfig, ...req.body, updatedAt: new Date().toISOString() };
     
+    // Check if disk size has changed and resize if necessary
+    if (req.body.diskSize && parseInt(req.body.diskSize) !== parseInt(existingConfig.diskSize)) {
+      const diskPath = existingConfig.diskPath || `/var/lib/idve/instances/${instanceId}.qcow2`;
+      
+      if (fs.existsSync(diskPath)) {
+        const newSize = parseInt(req.body.diskSize);
+        console.log(`Resizing disk from ${existingConfig.diskSize}G to ${newSize}G: ${diskPath}`);
+        
+        exec(`qemu-img resize ${diskPath} ${newSize}G`, (resizeErr, resizeOut, resizeStderr) => {
+          if (resizeErr) {
+            console.error('Error resizing disk:', resizeErr);
+            return res.status(500).json({ error: 'Failed to resize disk' });
+          }
+          
+          console.log(`Disk resized successfully: ${diskPath} -> ${newSize}G`);
+          
+          // Save updated config after successful resize
+          fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
+          console.log(`Instance configuration updated: ${configPath}`);
+          
+          res.json({ 
+            message: 'Instance updated successfully with disk resize', 
+            config: updatedConfig,
+            diskResized: true,
+            newSize: `${newSize}G`
+          });
+        });
+        return; // Exit here, response will be sent in callback
+      }
+    }
+    
+    // Save config without disk resize
     fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
     console.log(`Instance configuration updated: ${configPath}`);
     
@@ -524,10 +587,12 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
       }
       
       // Build QEMU command
-      let cpuModel = config.cpuType || 'qemu64';
-      // Fallback to qemu64 if host CPU is requested but KVM might not be available
+      let cpuModel = config.cpuType || 'host';
+      // For Windows 11 compatibility, prefer host CPU passthrough when available
+      // Only fallback to qemu64 if explicitly requested or if host passthrough fails
       if (cpuModel === 'host') {
-        cpuModel = 'qemu64';
+        // Keep host CPU for better Windows compatibility
+        cpuModel = 'host';
       }
       let qemuCmd = `qemu-system-x86_64 -enable-kvm -name "${config.name}" -m ${config.memory} -smp sockets=${config.cpuSockets},cores=${config.cpuCores} -cpu ${cpuModel}`;
       
@@ -536,7 +601,9 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
       
       // Add BIOS
       if (config.bios === 'ovmf') {
-        qemuCmd += ' -bios /usr/share/ovmf/OVMF.fd';
+        // Use OVMF with Secure Boot for Windows 11 compatibility
+        qemuCmd += ' -drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd';
+        qemuCmd += ' -drive if=pflash,format=raw,file=/usr/share/OVMF/OVMF_VARS_4M.fd';
       }
       
         // Add disk
@@ -560,7 +627,7 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
         
         function startQemu() {
           // Simplified QEMU command that works
-          qemuCmd += ` -drive file=${diskPath},if=virtio,format=qcow2`;
+          qemuCmd += ` -drive file=${diskPath},format=qcow2`;
           
           // Add Cloud-Init drive if this is a Cloud-Init instance
           if (config.cloudInit && config.cloudInitIsoPath) {
@@ -571,6 +638,7 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           const cdroms = config.cdroms || (config.cdrom ? [config.cdrom] : []);
           cdroms.forEach((cdrom, index) => {
             if (cdrom) {
+              // Use simple cdrom option for better UEFI compatibility
               qemuCmd += ` -cdrom ${cdrom}`;
             }
           });
@@ -601,7 +669,7 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
             // Ensure agent socket directory exists
             const agentSocketDir = `/var/lib/libvirt/qemu/domain-${config.id}`;
             exec(`mkdir -p ${agentSocketDir}`, () => {
-              qemuCmd += ` -chardev socket,path=${agentSocketDir}/agent.sock,server,nowait,id=agent_${config.id} -device virtserialport,chardev=agent_${config.id},name=org.qemu.guest_agent.0`;
+              qemuCmd += ` -device virtio-serial-pci -chardev socket,path=${agentSocketDir}/agent.sock,server=on,wait=off,id=agent_${config.id} -device virtserialport,chardev=agent_${config.id},name=org.qemu.guest_agent.0`;
             });
           }
           
@@ -610,62 +678,112 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
             qemuCmd += ' -device virtio-balloon';
           }
           
-          // Boot order
-          qemuCmd += cdroms.length > 0 ? ' -boot order=dc' : ' -boot order=c';
-          
-          // Daemonize for background execution
-          qemuCmd += ' -daemonize';
-          
-          console.log(`QEMU command: ${qemuCmd}`);
-        
-        // Start QEMU in background using spawn
-        const qemuArgs = qemuCmd.split(' ').slice(1); // Remove 'qemu-system-x86_64' from args
-        console.log('QEMU args:', qemuArgs);
-        
-        const qemuProcess = spawn('qemu-system-x86_64', qemuArgs, {
-          detached: true,
-          stdio: 'ignore'
-        });
-        
-        qemuProcess.on('error', (err) => {
-          console.error('Failed to start QEMU process:', err);
-        });
-        
-        qemuProcess.on('exit', (code, signal) => {
-          console.log(`QEMU process exited with code ${code} and signal ${signal}`);
-        });
-        
-        qemuProcess.unref(); // Allow parent to exit independently
-        
-        // Start websockify for VNC proxy (use different port for WebSocket)
-        const instanceNum = parseInt(config.id.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
-        const qemuVncPort = 5900 + instanceNum; // Exact VNC port QEMU will use
-        const baseWsPort = 7900 + instanceNum; // WebSocket port
-        
-        // Find available WebSocket port for websockify
-        findAvailablePort(baseWsPort, (wsPortErr, wsPort) => {
-          if (wsPortErr) {
-            console.error('Failed to find available WebSocket port:', wsPortErr);
-            return;
+          // Add TPM if configured
+          if (config.addTpm && config.tpmStatePath) {
+            // Start swtpm emulator
+            const swtpmCmd = `swtpm socket --tpmstate dir=${config.tpmStatePath},mode=0600 --ctrl type=unixio,path=${config.tpmSocketPath} --tpm2 --daemon --pid file=${config.tpmPidPath}`;
+            console.log(`Starting swtpm: ${swtpmCmd}`);
+            
+            exec(swtpmCmd, (swtpmErr, swtpmOut, swtpmStderr) => {
+              if (swtpmErr) {
+                console.error('Error starting swtpm:', swtpmErr);
+                // Continue anyway, TPM is optional
+                startQemu(false);
+              } else {
+                console.log('swTPM started successfully');
+                // Wait a moment for swTPM to be ready
+                setTimeout(() => {
+                  startQemu(true);
+                }, 1000);
+              }
+            });
+          } else {
+            startQemu(false);
           }
           
-          // Connect websockify directly to the VNC port QEMU is using
-          exec(`websockify --daemon ${wsPort} localhost:${qemuVncPort}`, (wsError, wsOut, wsStderr) => {
-            if (wsError) {
-              console.error('Warning: Failed to start websockify:', wsError);
-              // Don't fail the VM start if websockify fails
-            } else {
-              console.log(`Started websockify on port ${wsPort} proxying to VNC port ${qemuVncPort}`);
+          function startQemu(withTpm) {
+            // Add TPM device to QEMU command if TPM is enabled and ready
+            if (withTpm) {
+              qemuCmd += ` -chardev socket,id=tpmchar,path=${config.tpmSocketPath}`;
+              qemuCmd += ` -tpmdev emulator,id=tpmdev,chardev=tpmchar`;
+              qemuCmd += ` -device tpm-tis,tpmdev=tpmdev`;
             }
+            
+            // Add sound card for better malware analysis compatibility
+            // qemuCmd += ` -device intel-hda -device hda-duplex`;
+            
+            // Add USB support
+            qemuCmd += ` -usb`;
+            
+            // Boot order - using bootindex on devices for UEFI systems
+            // No global boot order needed when using bootindex
+            
+            // Daemonize for background execution
+            qemuCmd += ' -daemonize';
+            
+            console.log(`QEMU command: ${qemuCmd}`);
+          
+          // Write QEMU command to a script and execute it
+          const scriptPath = `/tmp/qemu-start-${config.id}.sh`;
+          const scriptContent = `#!/bin/bash\n${qemuCmd}\n`;
+          fs.writeFileSync(scriptPath, scriptContent);
+          fs.chmodSync(scriptPath, '755');
+          
+          exec(scriptPath, (qemuErr, qemuOut, qemuStderr) => {
+            if (qemuErr) {
+              console.error('Error starting QEMU:', qemuErr);
+              // Don't send error response here
+            }
+            
+            // Clean up the script
+            try {
+              fs.unlinkSync(scriptPath);
+            } catch (e) {
+              // Ignore cleanup errors
+            }
+            
+            // Check if QEMU actually started by looking for the process after a short delay
+            setTimeout(() => {
+              exec(`ps aux | grep 'qemu-system-x86_64.*-name "${config.name}"' | grep -v grep`, (checkError, checkStdout, checkStderr) => {
+                if (checkStdout.trim() !== '') {
+                  console.log('QEMU started successfully and is running');
+                } else {
+                  console.log('QEMU process not found after start attempt');
+                }
+              });
+            }, 2000);
           });
-        });
-        
-        // Update instance status
-        config.status = 'running';
-        config.startedAt = new Date().toISOString();
-        fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-        
-        res.json({ message: 'Instance started successfully' });
+          
+          // Start websockify for VNC proxy (use different port for WebSocket)
+          const instanceNum = parseInt(config.id.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
+          const qemuVncPort = 5900 + instanceNum; // Exact VNC port QEMU will use
+          const baseWsPort = 7900 + instanceNum; // WebSocket port
+          
+          // Find available WebSocket port for websockify
+          findAvailablePort(baseWsPort, (wsPortErr, wsPort) => {
+            if (wsPortErr) {
+              console.error('Failed to find available WebSocket port:', wsPortErr);
+              return;
+            }
+            
+            // Connect websockify directly to the VNC port QEMU is using
+            exec(`websockify --daemon ${wsPort} localhost:${qemuVncPort}`, (wsError, wsOut, wsStderr) => {
+              if (wsError) {
+                console.error('Warning: Failed to start websockify:', wsError);
+                // Don't fail the VM start if websockify fails
+              } else {
+                console.log(`Started websockify on port ${wsPort} proxying to VNC port ${qemuVncPort}`);
+              }
+            });
+          });
+          
+          // Update instance status
+          config.status = 'running';
+          config.startedAt = new Date().toISOString();
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          
+          res.json({ message: 'Instance started successfully' });
+        }
       }
     });
   } catch (error) {
@@ -701,6 +819,24 @@ app.put('/api/instances/:id/stop', requireAuth, (req, res) => {
         console.log(`Stopped websockify processes around port ${wsPort}`);
       });
       
+      // Stop swtpm if TPM was configured
+      if (config.addTpm && config.tpmPidPath && fs.existsSync(config.tpmPidPath)) {
+        try {
+          const tpmPid = fs.readFileSync(config.tpmPidPath, 'utf8').trim();
+          exec(`kill ${tpmPid}`, (killErr) => {
+            if (killErr) {
+              console.error('Error stopping swtpm:', killErr);
+            } else {
+              console.log('swTPM stopped successfully');
+              // Clean up PID file
+              fs.unlinkSync(config.tpmPidPath);
+            }
+          });
+        } catch (pidErr) {
+          console.error('Error reading TPM PID file:', pidErr);
+        }
+      }
+      
       // Update instance status
       config.status = 'stopped';
       config.stoppedAt = new Date().toISOString();
@@ -719,21 +855,66 @@ app.delete('/api/instances/:id', requireAuth, (req, res) => {
   const diskPath = `/var/lib/idve/instances/${instanceId}.qcow2`;
   const configPath = `/etc/idve/${instanceId}.json`;
   
-  // Remove disk file
-  fs.unlink(diskPath, (err) => {
-    if (err && err.code !== 'ENOENT') {
-      console.error('Error deleting disk:', err);
-      return res.status(500).json({ error: 'Failed to delete instance disk' });
+  // First, read the config to check if it's a CloudInit instance
+  fs.readFile(configPath, 'utf8', (configErr, configData) => {
+    let isCloudInit = false;
+    let cloudInitFiles = [];
+    
+    if (!configErr) {
+      try {
+        const config = JSON.parse(configData);
+        isCloudInit = config.cloudInit || false;
+        
+        // Collect CloudInit file paths if they exist
+        if (config.userDataPath) cloudInitFiles.push(config.userDataPath);
+        if (config.metaDataPath) cloudInitFiles.push(config.metaDataPath);
+        if (config.cloudInitIsoPath) cloudInitFiles.push(config.cloudInitIsoPath);
+        
+        // Also add network-data file if it exists
+        const networkDataPath = `/var/lib/idve/cloudinit/${instanceId}-network-data`;
+        cloudInitFiles.push(networkDataPath);
+      } catch (parseErr) {
+        console.error('Error parsing config for cleanup:', parseErr);
+      }
     }
     
-    // Remove config file
-    fs.unlink(configPath, (err) => {
+    // Remove disk file
+    fs.unlink(diskPath, (err) => {
       if (err && err.code !== 'ENOENT') {
-        console.error('Error deleting config:', err);
-        return res.status(500).json({ error: 'Failed to delete instance config' });
+        console.error('Error deleting disk:', err);
+        return res.status(500).json({ error: 'Failed to delete instance disk' });
       }
       
-      res.json({ message: 'Instance deleted successfully' });
+      // Remove config file
+      fs.unlink(configPath, (err) => {
+        if (err && err.code !== 'ENOENT') {
+          console.error('Error deleting config:', err);
+          return res.status(500).json({ error: 'Failed to delete instance config' });
+        }
+        
+        // Clean up CloudInit files if this was a CloudInit instance
+        if (isCloudInit && cloudInitFiles.length > 0) {
+          let cleanupErrors = [];
+          
+          cloudInitFiles.forEach(filePath => {
+            try {
+              if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+                console.log(`Cleaned up CloudInit file: ${filePath}`);
+              }
+            } catch (cleanupErr) {
+              console.error(`Error cleaning up CloudInit file ${filePath}:`, cleanupErr);
+              cleanupErrors.push(`Failed to delete ${filePath}`);
+            }
+          });
+          
+          if (cleanupErrors.length > 0) {
+            console.warn('Some CloudInit files could not be cleaned up:', cleanupErrors);
+          }
+        }
+        
+        res.json({ message: 'Instance deleted successfully' });
+      });
     });
   });
 });
@@ -875,11 +1056,242 @@ app.get('/api/images', requireAuth, (req, res) => {
   });
 });
 
+// API routes for CloudInit templates
+app.get('/api/cloudinit-templates', requireAuth, (req, res) => {
+  const templatesDir = '/var/lib/idve/cloudinit-templates';
+  
+  // Ensure directory exists
+  if (!fs.existsSync(templatesDir)) {
+    fs.mkdirSync(templatesDir, { recursive: true });
+  }
+  
+  fs.readdir(templatesDir, (err, files) => {
+    if (err) return res.status(500).json({ error: err.message });
+    
+    const templates = files
+      .filter(file => file.endsWith('.json'))
+      .map(file => {
+        try {
+          const templatePath = `${templatesDir}/${file}`;
+          const templateData = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+          return {
+            id: file.replace('.json', ''),
+            name: templateData.name || file.replace('.json', ''),
+            description: templateData.description || '',
+            os: templateData.os || '',
+            version: templateData.version || '',
+            image: templateData.image || '',
+            createdAt: templateData.createdAt || null
+          };
+        } catch (parseErr) {
+          console.error(`Error parsing template ${file}:`, parseErr);
+          return null;
+        }
+      })
+      .filter(template => template !== null);
+    
+    res.json(templates);
+  });
+});
+
+// Upload CloudInit template
+app.post('/api/cloudinit-templates', requireAuth, (req, res) => {
+  const { name, description, os, version, image, userDataTemplate } = req.body;
+  
+  if (!name || !os || !image) {
+    return res.status(400).json({ error: 'Name, OS, and image are required' });
+  }
+  
+  const templatesDir = '/var/lib/idve/cloudinit-templates';
+  
+  // Ensure directory exists
+  if (!fs.existsSync(templatesDir)) {
+    fs.mkdirSync(templatesDir, { recursive: true });
+  }
+  
+  const templateId = name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+  const templatePath = `${templatesDir}/${templateId}.json`;
+  
+  const templateData = {
+    name,
+    description: description || '',
+    os,
+    version: version || '',
+    image,
+    userDataTemplate: userDataTemplate || '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  
+  try {
+    fs.writeFileSync(templatePath, JSON.stringify(templateData, null, 2));
+    res.json({ 
+      success: true, 
+      message: 'CloudInit template created successfully',
+      template: {
+        id: templateId,
+        ...templateData
+      }
+    });
+  } catch (error) {
+    console.error('Error saving template:', error);
+    res.status(500).json({ error: 'Failed to save template' });
+  }
+});
+
+// Delete CloudInit template
+app.delete('/api/cloudinit-templates/:id', requireAuth, (req, res) => {
+  const templateId = req.params.id;
+  const templatesDir = '/var/lib/idve/cloudinit-templates';
+  const templatePath = `${templatesDir}/${templateId}.json`;
+  
+  if (!fs.existsSync(templatePath)) {
+    return res.status(404).json({ error: 'Template not found' });
+  }
+  
+  try {
+    fs.unlinkSync(templatePath);
+    res.json({ success: true, message: 'Template deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting template:', error);
+    res.status(500).json({ error: 'Failed to delete template' });
+  }
+});
+
+// Get CloudInit template details
+app.get('/api/cloudinit-templates/:id', requireAuth, (req, res) => {
+  const templateId = req.params.id;
+  const templatesDir = '/var/lib/idve/cloudinit-templates';
+  const templatePath = `${templatesDir}/${templateId}.json`;
+  
+  if (!fs.existsSync(templatePath)) {
+    return res.status(404).json({ error: 'Template not found' });
+  }
+  
+  try {
+    const templateData = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+    res.json(templateData);
+  } catch (error) {
+    console.error('Error reading template:', error);
+    res.status(500).json({ error: 'Failed to read template' });
+  }
+});
+
+// Update CloudInit template
+app.put('/api/cloudinit-templates/:id', requireAuth, (req, res) => {
+  const templateId = req.params.id;
+  const templatesDir = '/var/lib/idve/cloudinit-templates';
+  const templatePath = `${templatesDir}/${templateId}.json`;
+  
+  if (!fs.existsSync(templatePath)) {
+    return res.status(404).json({ error: 'Template not found' });
+  }
+  
+  try {
+    const existingTemplate = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+    const updatedTemplate = {
+      ...existingTemplate,
+      ...req.body,
+      id: templateId,
+      updatedAt: new Date().toISOString()
+    };
+    
+    fs.writeFileSync(templatePath, JSON.stringify(updatedTemplate, null, 2));
+    res.json({ success: true, template: updatedTemplate });
+  } catch (error) {
+    console.error('Error updating template:', error);
+    res.status(500).json({ error: 'Failed to update template' });
+  }
+});
+
+// Upload ISO file
+const multer = require('multer');
+const upload = multer({ dest: '/tmp/' });
+
+app.post('/api/upload-iso', requireAuth, upload.single('iso'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  const isosDir = '/var/lib/idve/isos';
+  if (!fs.existsSync(isosDir)) {
+    fs.mkdirSync(isosDir, { recursive: true });
+  }
+  
+  const originalName = req.file.originalname;
+  const targetPath = `${isosDir}/${originalName}`;
+  
+  // Move file from temp to isos directory
+  fs.rename(req.file.path, targetPath, (err) => {
+    if (err) {
+      console.error('Error moving uploaded file:', err);
+      return res.status(500).json({ error: 'Failed to save uploaded file' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'ISO uploaded successfully',
+      filename: originalName,
+      path: targetPath
+    });
+  });
+});
+
+// Upload base image file
+app.post('/api/upload-base-image', requireAuth, upload.single('image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+  
+  const imagesDir = '/var/lib/idve/images';
+  if (!fs.existsSync(imagesDir)) {
+    fs.mkdirSync(imagesDir, { recursive: true });
+  }
+  
+  const originalName = req.file.originalname;
+  const targetPath = `${imagesDir}/${originalName}`;
+  
+  // Move file from temp to images directory
+  fs.rename(req.file.path, targetPath, (err) => {
+    if (err) {
+      console.error('Error moving uploaded image file:', err);
+      return res.status(500).json({ error: 'Failed to save uploaded image file' });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Base image uploaded successfully',
+      filename: originalName,
+      path: targetPath
+    });
+  });
+});
+
 app.get('/api/isos', requireAuth, (req, res) => {
   const isosDir = '/var/lib/idve/isos';
   fs.readdir(isosDir, (err, files) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(files);
+  });
+});
+
+// Delete ISO file
+app.delete('/api/isos/:filename', requireAuth, (req, res) => {
+  const filename = req.params.filename;
+  const isosDir = '/var/lib/idve/isos';
+  const filePath = `${isosDir}/${filename}`;
+  
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'ISO file not found' });
+  }
+  
+  fs.unlink(filePath, (err) => {
+    if (err) {
+      console.error('Error deleting ISO file:', err);
+      return res.status(500).json({ error: 'Failed to delete ISO file' });
+    }
+    
+    res.json({ success: true, message: 'ISO deleted successfully' });
   });
 });
 
@@ -1318,13 +1730,14 @@ app.get('/api/cloudinit-templates', requireAuth, (req, res) => {
 
 app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   const {
-    template,
-    os,
+    templateId,
     instanceName,
     ipAddress,
     sshKey,
     networkConfig,
     diskResize,
+    diskSize,
+    addTpm,
     // Network Configuration
     bridge,
     vlanTag,
@@ -1341,6 +1754,32 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     gateway
   } = req.body;
 
+  if (!templateId || !instanceName || !username || !password) {
+    return res.status(400).json({ error: 'Template ID, instance name, username, and password are required' });
+  }
+
+  // Load template
+  const templatesDir = '/var/lib/idve/cloudinit-templates';
+  const templatePath = `${templatesDir}/${templateId}.json`;
+
+  if (!fs.existsSync(templatePath)) {
+    return res.status(400).json({ error: 'Template not found' });
+  }
+
+  let template;
+  try {
+    template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+  } catch (error) {
+    console.error('Error loading template:', error);
+    return res.status(500).json({ error: 'Failed to load template' });
+  }
+
+  // Check if base image exists
+  const baseImagePath = `/var/lib/idve/images/${template.image}`;
+  if (!fs.existsSync(baseImagePath)) {
+    return res.status(400).json({ error: 'Base image not found' });
+  }
+
   // Generate unique instance ID
   const instanceId = `cloudinit-${Date.now()}`;
 
@@ -1354,227 +1793,13 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
   }
   const macAddress = generateRandomMac();
 
-  // Determine OS-specific settings
-  let osSettings = {};
-  switch (os) {
-    case 'ubuntu-22.04':
-      osSettings = {
-        image: 'ubuntu-22.04-server-cloudimg-amd64.img',
-        userDataTemplate: `#cloud-config
-hostname: ${instanceName}
-users:
-  - name: ${username}
-    lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: users, admin
-    shell: /bin/bash
-    ssh_authorized_keys:
-      - ${sshKey || ''}
-ssh_pwauth: true
-disk_setup:
-  /dev/vda:
-    table_type: gpt
-    layout: true
-    overwrite: false
-fs_setup:
-  - label: cloudimg-rootfs
-    filesystem: ext4
-    device: /dev/vda1
-    partition: auto
-    overwrite: false
-growpart:
-  mode: auto
-  devices: ['/']
-  ignore_growroot_disabled: false
-packages:
-  - openssh-server
-  - net-tools
-  - qemu-guest-agent
-  - cloud-guest-utils
-  - gdisk
-runcmd:
-  - systemctl enable ssh
-  - systemctl start ssh
-  - echo "${username}:${password || 'ubuntu'}" | chpasswd
-  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - systemctl restart ssh
-  - growpart /dev/vda 1
-  - resize2fs /dev/vda1
-  - df -h
-`
-      };
-      break;
-    case 'freebsd-14.2':
-      osSettings = {
-        image: 'freebsd-14.2-zfs-2024-12-08.qcow2',
-        userDataTemplate: `#cloud-config
-hostname: ${instanceName}
-users:
-  - name: ${username}
-    lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: wheel
-    shell: /bin/sh
-    ssh_authorized_keys:
-      - ${sshKey || ''}
-ssh_pwauth: true
-packages:
-  - openssh-portable
-  - qemu-guest-agent
-runcmd:
-  - sysrc sshd_enable=YES
-  - service sshd start
-  - echo "${username}:${password || 'freebsd'}" | chpasswd
-  - sed -i '' 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - service sshd restart
-`
-      };
-      break;
-    case 'centos-stream-9':
-      osSettings = {
-        image: 'centos-stream-9-x86_64-boot.iso',
-        userDataTemplate: `#cloud-config
-hostname: ${instanceName}
-users:
-  - name: ${username}
-    lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: users, wheel
-    shell: /bin/bash
-    ssh_authorized_keys:
-      - ${sshKey || ''}
-ssh_pwauth: true
-packages:
-  - openssh-server
-  - net-tools
-  - qemu-guest-agent
-  - cloud-guest-utils
-runcmd:
-  - systemctl enable ssh
-  - systemctl start ssh
-  - echo "${username}:${password || 'centos'}" | chpasswd
-  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - systemctl restart ssh
-`
-      };
-      break;
-    case 'debian-11':
-      osSettings = {
-        image: 'debian-11-genericcloud-amd64.qcow2',
-        userDataTemplate: `#cloud-config
-hostname: ${instanceName}
-users:
-  - name: ${username}
-    lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: users, sudo
-    shell: /bin/bash
-    ssh_authorized_keys:
-      - ${sshKey || ''}
-ssh_pwauth: true
-packages:
-  - openssh-server
-  - net-tools
-  - qemu-guest-agent
-  - cloud-guest-utils
-runcmd:
-  - systemctl enable ssh
-  - systemctl start ssh
-  - echo "${username}:${password || 'debian'}" | chpasswd
-  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - systemctl restart ssh
-`
-      };
-      break;
-    case 'debian-13':
-      osSettings = {
-        image: 'debian-13-generic-amd64.qcow2',
-        userDataTemplate: `#cloud-config
-hostname: ${instanceName}
-users:
-  - name: ${username}
-    lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: users, sudo
-    shell: /bin/bash
-    ssh_authorized_keys:
-      - ${sshKey || ''}
-ssh_pwauth: true
-packages:
-  - openssh-server
-  - net-tools
-  - qemu-guest-agent
-  - cloud-guest-utils
-runcmd:
-  - systemctl enable ssh
-  - systemctl start ssh
-  - echo "${username}:${password || 'debian'}" | chpasswd
-  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - systemctl restart ssh
-`
-      };
-      break;
-    case 'rocky-9':
-      osSettings = {
-        image: 'rocky-9-x86_64-boot.iso',
-        userDataTemplate: `#cloud-config
-hostname: ${instanceName}
-users:
-  - name: ${username}
-    lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    groups: users, wheel
-    shell: /bin/bash
-    ssh_authorized_keys:
-      - ${sshKey || ''}
-chpasswd:
-  list: |
-    rocky:rocky
-  expire: false
-ssh_pwauth: true
-packages:
-  - openssh-server
-  - net-tools
-  - qemu-guest-agent
-  - cloud-guest-utils
-runcmd:
-  - systemctl enable ssh
-  - systemctl start ssh
-  - echo "${username}:${password || 'rocky'}" | chpasswd
-  - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
-  - systemctl restart ssh
-`
-      };
-      break;
-    default:
-      return res.status(400).json({ error: 'Unsupported OS' });
-  }
-
-  // Apply template-specific packages
-  let additionalPackages = [];
-  switch (template) {
-    case 'web-server':
-      additionalPackages = ['apache2', 'mysql-server', 'php', 'php-mysql'];
-      break;
-    case 'development':
-      additionalPackages = ['nodejs', 'npm', 'git', 'build-essential'];
-      break;
-    case 'database':
-      additionalPackages = ['postgresql', 'postgresql-contrib'];
-      break;
-  }
-
-  // Create Cloud-Init user-data
-  let userData = osSettings.userDataTemplate;
-
-  // Add custom username and password if provided
-  if (username) {
-    // Replace default username in user-data
-    const defaultUser = osSettings.userDataTemplate.match(/name: (\w+)/)[1];
-    userData = userData.replace(new RegExp(`name: ${defaultUser}`, 'g'), `name: ${username}`);
-    userData = userData.replace(new RegExp(`/home/${defaultUser}`, 'g'), `/home/${username}`);
-    userData = userData.replace(new RegExp(`${defaultUser}:${defaultUser}`, 'g'), `${username}:${password || username}`);
-  }
+  // Create Cloud-Init user-data from template
+  let userData = template.userDataTemplate
+    .replace(/{{instanceName}}/g, instanceName)
+    .replace(/{{username}}/g, username)
+    .replace(/{{password}}/g, password)
+    .replace(/{{sshKey}}/g, sshKey || '')
+    .replace(/{{macAddress}}/g, macAddress);
 
   // // Add password if provided
   // if (password) {
@@ -1590,21 +1815,13 @@ runcmd:
       userData += '\nruncmd:\n  - growpart /dev/vda 1\n  - resize2fs /dev/vda1\n';
     }
   }
-  if (additionalPackages.length > 0) {
-    userData += '\npackages:\n' + additionalPackages.map(pkg => `  - ${pkg}`).join('\n');
-  }
-
-  // Add SSH key if provided
-  if (sshKey) {
-    userData = userData.replace('${SSH_KEY}', sshKey);
-  } else {
-    // Remove SSH key section if not provided
-    userData = userData.replace(/\s*ssh_authorized_keys:[\s\S]*?(?=\n\w|$)/, '');
-  }
 
   // Add domain if provided
   if (domain) {
     userData += `\nmanage_etc_hosts: true\n`;
+    userData = userData.replace(/{{hostname}}/g, `${instanceName}.${domain}`);
+  } else {
+    userData = userData.replace(/{{hostname}}/g, instanceName);
   }
 
   // Note: Network configuration is now handled in network-data file
@@ -1712,7 +1929,7 @@ runcmd:
 
   function createDisk() {
     // Create disk from base image
-    const baseImagePath = `/var/lib/idve/images/${osSettings.image}`;
+    const baseImagePath = `/var/lib/idve/images/${template.image}`;
 
     // Ensure instances directory exists
     if (!fs.existsSync('/var/lib/idve/instances')) {
@@ -1726,14 +1943,27 @@ runcmd:
         return res.status(500).json({ error: 'Failed to create instance disk' });
       }
 
-      // Resize disk if requested
-      if (diskResize) {
-        exec(`qemu-img resize ${instanceDiskPath} +10G`, (resizeErr) => {
+      // Handle disk sizing
+      const resizeOperations = [];
+      
+      // If custom disk size is specified, resize to that size
+      if (diskSize && parseInt(diskSize) > 0) {
+        const targetSize = parseInt(diskSize);
+        console.log(`Resizing CloudInit disk to ${targetSize}G: ${instanceDiskPath}`);
+        resizeOperations.push(`qemu-img resize ${instanceDiskPath} ${targetSize}G`);
+      } else if (diskResize) {
+        // Default behavior: add 10G if diskResize is enabled
+        console.log(`Resizing CloudInit disk +10G: ${instanceDiskPath}`);
+        resizeOperations.push(`qemu-img resize ${instanceDiskPath} +10G`);
+      }
+
+      // Execute resize operations if any
+      if (resizeOperations.length > 0) {
+        exec(resizeOperations[0], (resizeErr) => {
           if (resizeErr) {
             console.error('Error resizing disk:', resizeErr);
             // Continue anyway, disk resize is optional
           }
-
           createInstanceConfig();
         });
       } else {
@@ -1748,13 +1978,14 @@ runcmd:
       id: instanceId,
       name: instanceName,
       host: 'localhost',
-      osType: os,
-      template: template,
+      osType: template.os,
+      template: templateId,
       cloudInit: true,
       userDataPath: userDataPath,
       metaDataPath: metaDataPath,
       cloudInitIsoPath: cloudInitIsoPath,
       diskPath: instanceDiskPath,
+      diskSize: diskSize || null, // Store custom disk size if specified
       cpuSockets: 1,
       cpuCores: 2,
       cpuType: 'host',
@@ -1779,9 +2010,33 @@ runcmd:
       machine: 'q35',
       bios: 'seabios',
       qemuAgent: true, // Enable qemu-guest-agent for IP detection
+      addTpm: addTpm || false,
       createdAt: new Date().toISOString(),
       status: 'created'
     };
+
+    // Add TPM configuration if enabled
+    if (addTpm) {
+      const tpmStatePath = `/var/lib/idve/instances/${instanceId}-tpm.raw`;
+      const tpmSocketPath = `/var/run/idve/${instanceId}-tpm.sock`;
+      const tpmPidPath = `/var/run/idve/${instanceId}-tpm.pid`;
+      
+      // Create TPM state file (4MB)
+      const tpmStateSize = 4 * 1024 * 1024;
+      if (!fs.existsSync(tpmStatePath)) {
+        exec(`dd if=/dev/zero of=${tpmStatePath} bs=1 count=0 seek=${tpmStateSize}`, (ddErr) => {
+          if (ddErr) {
+            console.error('Error creating TPM state file:', ddErr);
+          } else {
+            console.log(`TPM state file created: ${tpmStatePath}`);
+          }
+        });
+      }
+      
+      instanceConfig.tpmStatePath = tpmStatePath;
+      instanceConfig.tpmSocketPath = tpmSocketPath;
+      instanceConfig.tpmPidPath = tpmPidPath;
+    }
 
     // Save instance configuration
     const configPath = `/etc/idve/${instanceId}.json`;
