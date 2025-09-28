@@ -680,8 +680,8 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
             qemuCmd += ` -drive file=${diskPath},format=qcow2,if=none,id=drive0,cache=writeback,discard=on`;
             qemuCmd += ` -device scsi-hd,drive=drive0,bus=scsi0.0`;
           } else {
-            // Use IDE for Linux VMs
-            qemuCmd += ` -drive file=${diskPath},format=qcow2,if=ide,index=0`;
+            // Use VirtIO for Linux VMs (better compatibility with q35 machine type)
+            qemuCmd += ` -drive file=${diskPath},format=qcow2,if=virtio,cache=writeback,discard=on`;
           }
           
           // Add Cloud-Init drive if this is a Cloud-Init instance
