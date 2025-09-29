@@ -521,16 +521,6 @@ auth client required = cephx
   // Add graphics
   qemuCmd += ` -vga ${graphics} -nographic`;
 
-  // Add VNC for console access
-  const vncInstanceNum = parseInt(instanceId.replace(/\D/g, '')) % 1000; // Keep port numbers reasonable
-  const vncPort = 5900 + vncInstanceNum;
-  const vncDisplay = vncPort - 5900; // Convert port to VNC display number
-  qemuCmd += ` -vnc :${vncDisplay} -k en-us`;
-
-  // Add USB support with tablet device for proper VNC mouse alignment
-  qemuCmd += ` -device nec-usb-xhci,id=usb,bus=pci.0,addr=0x4`;
-  qemuCmd += ` -device usb-tablet,bus=usb.0`;
-
   // Add SCSI controller if needed (skip for Windows as we use VirtIO SCSI Single)
   if ((diskBus === 'scsi' || scsiController) && osType !== 'windows') {
     qemuCmd += ` -device ${scsiController}`;
@@ -1041,9 +1031,8 @@ auth client required = cephx
               qemuCmd += ` -device intel-hda -device hda-duplex`;
             }
             
-            // Add USB support with tablet device for proper VNC mouse alignment
-            qemuCmd += ` -device nec-usb-xhci,id=usb,bus=pci.0,addr=0x4`;
-            qemuCmd += ` -device usb-tablet,bus=usb.0`;
+            // Add USB support and tablet for better mouse handling
+            qemuCmd += ` -usb -device usb-tablet`;
             
             // Boot order - using bootindex on devices for UEFI systems
             // No global boot order needed when using bootindex
