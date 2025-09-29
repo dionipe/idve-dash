@@ -2650,7 +2650,9 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
       userData += '\ngrowpart:\n  mode: auto\n  devices: [\'/\']\n  ignore_growroot_disabled: false\n';
     }
     if (!userData.includes('resize2fs')) {
-      userData += '\nruncmd:\n  - growpart /dev/vda 1\n  - resize2fs /dev/vda1\n';
+      // Use SCSI device for RBD storage (/dev/sda)
+      const diskDevice = '/dev/sda';
+      userData += `\nruncmd:\n  - growpart ${diskDevice} 1\n  - resize2fs ${diskDevice}1\n`;
     }
   }
 
@@ -2956,7 +2958,7 @@ key = ${rbdStorage.key}
         cloudInitIsoPath: cloudInitIsoPath,
         diskPath: diskPath,
         diskFormat: diskFormat,
-        diskSize: diskSize || 20, // Default to 20GB if not specified
+        diskSize: diskSize || 10, // Default to 10GB if not specified
         isRBD: isRBD,
         rbdConfig: rbdConfig,
         scsiController: 'virtio-scsi-pci',
