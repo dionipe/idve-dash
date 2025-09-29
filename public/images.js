@@ -1,5 +1,48 @@
 const socket = io();
 
+// Mobile navigation functions
+function setActiveNav(navId) {
+  // Remove active class from all nav items
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  // Add active class to clicked nav item
+  const activeItem = document.querySelector(`.nav-item[data-nav="${navId}"]`);
+  if (activeItem) {
+    activeItem.classList.add('active');
+  }
+}
+
+function toggleFabMenu() {
+  const body = document.body;
+  const isOpen = body.classList.contains('fab-menu-open');
+
+  if (isOpen) {
+    closeFabMenu();
+  } else {
+    openFabMenu();
+  }
+}
+
+function openFabMenu() {
+  document.body.classList.add('fab-menu-open');
+}
+
+function closeFabMenu() {
+  document.body.classList.remove('fab-menu-open');
+}
+
+// Close FAB menu when clicking outside
+document.addEventListener('click', function(event) {
+  const fabButton = document.getElementById('fab-button');
+  const fabMenu = document.getElementById('fab-menu');
+
+  if (fabButton && fabMenu && !fabButton.contains(event.target) && !fabMenu.contains(event.target)) {
+    closeFabMenu();
+  }
+});
+
 function loadImages() {
   fetch('/api/cloudinit-templates')
   .then(response => response.json())
