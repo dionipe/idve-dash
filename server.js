@@ -470,10 +470,10 @@ app.post('/api/instances', (req, res) => { // Temporarily removed requireAuth fo
     
     // Create RBD path using conf file approach
     const qemuCephConf = `[global]
-mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
-auth cluster required = cephx
-auth service required = cephx
-auth client required = cephx
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
 `;
     
     const qemuTempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
@@ -627,10 +627,10 @@ auth client required = cephx
         
         // Create RBD path using conf file approach
         const qemuCephConf = `[global]
-mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
-auth cluster required = cephx
-auth service required = cephx
-auth client required = cephx
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
 keyring = /dev/null
 `;
         
@@ -642,10 +642,10 @@ keyring = /dev/null
         
         // Create RBD image if it doesn't exist
         const cephConf = `[global]
-mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
-auth cluster required = cephx
-auth service required = cephx
-auth client required = cephx
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
 keyring = /dev/null
 `;
         
@@ -834,6 +834,8 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
         const storagePool = config.storagePool || '/var/lib/idve/instances';
         let diskPath, diskFormat;
         let isRBD = false;
+        let rbdStorage = null;
+        let poolName = null;
         
         logToFile(`Instance creation started - storagePool: ${storagePool}, diskSize: ${config.diskSize}`);
         console.log(`Instance creation started - storagePool: ${storagePool}, diskSize: ${config.diskSize}`);
@@ -843,9 +845,9 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           console.log(`RBD storage detected: ${storagePool}`);
           
           // Create RBD path using conf file approach
-          const poolName = storagePool.split(':')[1];
+          poolName = storagePool.split(':')[1];
           console.log(`Pool name: ${poolName}`);
-          const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
+          rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
           console.log(`RBD storage found: ${!!rbdStorage}`);
           
           if (!rbdStorage) {
@@ -858,10 +860,10 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           
           // Create temporary ceph.conf for QEMU
           const cephConf = `[global]
-mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
-auth cluster required = cephx
-auth service required = cephx
-auth client required = cephx
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
 `;
           
           const tempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
@@ -889,10 +891,56 @@ auth client required = cephx
         try {
         // Create disk if it doesn't exist
         if (isRBD) {
-          // For RBD, image should already be created during instance creation
-          // Just start QEMU directly
-          console.log('RBD storage detected, starting QEMU...');
-          startQemu();
+          // Check if rbdStorage is available
+          if (!rbdStorage) {
+            return res.status(500).json({ error: 'RBD storage configuration not found' });
+          }
+          
+          // For RBD, check if image exists and create if needed
+          const cephConf = `[global]
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
+keyring = /dev/null
+`;
+          
+          const tempConfPath = `/tmp/ceph-rbd-${Date.now()}.conf`;
+          fs.writeFileSync(tempConfPath, cephConf);
+          
+          const rbdCmd = `CEPH_CONF=${tempConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} info ${poolName}/${config.id}`;
+          
+          exec(rbdCmd, (rbdErr, rbdOut, rbdStderr) => {
+            // Clean up temp file
+            try { fs.unlinkSync(tempConfPath); } catch (e) {}
+            
+            if (rbdErr) {
+              // RBD image doesn't exist, create it
+              console.log(`Creating RBD image: ${poolName}/${config.id} (${config.diskSize}G)`);
+              
+              const createConfPath = `/tmp/ceph-create-${Date.now()}.conf`;
+              fs.writeFileSync(createConfPath, cephConf);
+              
+              const createCmd = `CEPH_CONF=${createConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} create --size ${config.diskSize}G ${poolName}/${config.id}`;
+              
+              exec(createCmd, (createErr, createOut, createStderr) => {
+                // Clean up temp file
+                try { fs.unlinkSync(createConfPath); } catch (e) {}
+                
+                if (createErr) {
+                  console.error('Error creating RBD image:', createErr);
+                  return res.status(500).json({ error: 'Failed to create RBD image' });
+                }
+                
+                console.log('RBD image created successfully, starting QEMU...');
+                startQemu();
+              });
+            } else {
+              // RBD image exists, start QEMU directly
+              console.log('RBD image exists, starting QEMU...');
+              startQemu();
+            }
+          });
         } else {
           // Local storage - create qcow2 file if it doesn't exist
           if (!fs.existsSync(diskPath)) {
@@ -914,6 +962,13 @@ auth client required = cephx
         }
         
         function startQemu() {
+          // For Cloud-Init instances, add Cloud-Init ISO first (boot device)
+          if (config.cloudInit && config.cloudInitIsoPath) {
+            qemuCmd += ` -drive file=${config.cloudInitIsoPath},if=ide,index=0,media=cdrom`;
+            // Force boot from CD-ROM first
+            qemuCmd += ` -boot order=d`;
+          }
+          
           // Simplified QEMU command that works
           if (config.osType === 'windows') {
             // Use VirtIO SCSI Single for Windows VMs (best performance per Proxmox best practices)
@@ -921,13 +976,14 @@ auth client required = cephx
             qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=none,id=drive0,cache=writeback,discard=on`;
             qemuCmd += ` -device scsi-hd,drive=drive0,bus=scsi0.0`;
           } else {
-            // Use VirtIO for Linux VMs (better compatibility with q35 machine type)
-            qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=virtio,cache=writeback,discard=on`;
-          }
-          
-          // Add Cloud-Init drive if this is a Cloud-Init instance
-          if (config.cloudInit && config.cloudInitIsoPath) {
-            qemuCmd += ` -drive file=${config.cloudInitIsoPath},if=virtio,format=raw`;
+            if (diskFormat === 'raw') {
+              // For raw disks, use direct access for better performance
+              qemuCmd += ` -device virtio-blk-pci,drive=drive0`;
+              qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=none,id=drive0,aio=native`;
+            } else {
+              // Use VirtIO for Linux VMs (better compatibility with q35 machine type)
+              qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=virtio,cache=writeback,discard=on`;
+            }
           }
           
           // Add CDROM(s) if specified
@@ -1555,6 +1611,7 @@ app.put('/api/cloudinit-templates/:id', requireAuth, (req, res) => {
 
 // Upload ISO file
 const multer = require('multer');
+const { raw } = require('body-parser');
 const upload = multer({ dest: '/tmp/' });
 
 app.post('/api/upload-iso', requireAuth, upload.single('iso'), (req, res) => {
@@ -2135,10 +2192,10 @@ function getStorageCapacity(storage, callback) {
     
     // Create temporary ceph.conf for this connection
     const cephConf = `[global]
-mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
-auth cluster required = cephx
-auth service required = cephx
-auth client required = cephx
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster required = cephx
+auth_service required = cephx
+auth_client required = cephx
 keyring = /dev/null
 `;
     
@@ -2251,10 +2308,10 @@ app.post('/api/storages', requireAuth, (req, res) => {
     const { exec } = require('child_process');
     // Create temporary ceph.conf for this connection
     const cephConf = `[global]
-mon host = ${monitors.replace(/,/g, ':6789,')}:6789
-auth cluster required = cephx
-auth service required = cephx
-auth client required = cephx
+mon_host = ${monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
 keyring = /dev/null
 `;
     
@@ -2337,6 +2394,158 @@ app.delete('/api/storages/:name', requireAuth, (req, res) => {
   storages = storages.filter(stor => stor.name !== name);
   saveStorages(storages); // Save to persistent storage
   res.json({ message: 'Storage deleted' });
+});
+
+// API endpoint to list RBD images in a storage pool
+app.get('/api/storages/:name/rbd-images', requireAuth, (req, res) => {
+  const storageName = req.params.name;
+  const storage = storages.find(s => s.name === storageName);
+  
+  if (!storage) {
+    return res.status(404).json({ error: 'Storage not found' });
+  }
+  
+  if (storage.type !== 'RBD') {
+    return res.status(400).json({ error: 'Storage is not an RBD storage pool' });
+  }
+  
+  // Create temporary ceph.conf for rbd commands
+  const cephConfPath = `/tmp/ceph-rbd-list-${Date.now()}.conf`;
+  const cephConf = `[global]
+mon host = ${storage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+key = ${storage.key}
+`;
+  fs.writeFileSync(cephConfPath, cephConf);
+  
+  // List RBD images in the pool
+  const listCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${storage.username}" rbd ls --format json ${storage.pool}`;
+  
+  exec(listCmd, (error, stdout, stderr) => {
+    // Clean up temp conf file
+    try { fs.unlinkSync(cephConfPath); } catch (e) {}
+    
+    if (error) {
+      console.error('Error listing RBD images:', error);
+      return res.status(500).json({ error: 'Failed to list RBD images' });
+    }
+    
+    try {
+      const images = JSON.parse(stdout);
+      
+      // Get detailed info for each image
+      const imagePromises = images.map(imageName => {
+        return new Promise((resolve) => {
+          const infoConfPath = `/tmp/ceph-rbd-info-${Date.now()}-${Math.random()}.conf`;
+          const infoConf = `[global]
+mon host = ${storage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+key = ${storage.key}
+`;
+          fs.writeFileSync(infoConfPath, infoConf);
+          
+          const infoCmd = `CEPH_ARGS="--conf=${infoConfPath} --id=${storage.username}" rbd info --format json ${storage.pool}/${imageName}`;
+          
+          exec(infoCmd, (infoError, infoStdout, infoStderr) => {
+            // Clean up temp conf file
+            try { fs.unlinkSync(infoConfPath); } catch (e) {}
+            
+            if (infoError) {
+              console.error(`Error getting info for RBD image ${imageName}:`, infoError);
+              resolve({
+                name: imageName,
+                size: 'Unknown',
+                format: 'Unknown',
+                features: [],
+                error: 'Failed to get image info'
+              });
+            } else {
+              try {
+                const info = JSON.parse(infoStdout);
+                resolve({
+                  name: imageName,
+                  size: info.size || 'Unknown',
+                  format: info.format || 'Unknown',
+                  features: info.features || [],
+                  create_timestamp: info.create_timestamp,
+                  modification_timestamp: info.modification_timestamp
+                });
+              } catch (parseError) {
+                console.error(`Error parsing RBD info for ${imageName}:`, parseError);
+                resolve({
+                  name: imageName,
+                  size: 'Unknown',
+                  format: 'Unknown',
+                  features: [],
+                  error: 'Failed to parse image info'
+                });
+              }
+            }
+          });
+        });
+      });
+      
+      Promise.all(imagePromises).then(rbdImages => {
+        res.json({
+          storage: storageName,
+          pool: storage.pool,
+          images: rbdImages
+        });
+      }).catch(error => {
+        console.error('Error processing RBD images:', error);
+        res.status(500).json({ error: 'Failed to process RBD images' });
+      });
+      
+    } catch (parseError) {
+      console.error('Error parsing RBD list output:', parseError);
+      res.status(500).json({ error: 'Failed to parse RBD list output' });
+    }
+  });
+});
+
+// API endpoint to delete an RBD image from a storage pool
+app.delete('/api/storages/:name/rbd-images/:imageName', requireAuth, (req, res) => {
+  const storageName = req.params.name;
+  const imageName = req.params.imageName;
+  const storage = storages.find(s => s.name === storageName);
+  
+  if (!storage) {
+    return res.status(404).json({ error: 'Storage not found' });
+  }
+  
+  if (storage.type !== 'RBD') {
+    return res.status(400).json({ error: 'Storage is not an RBD storage pool' });
+  }
+  
+  // Create temporary ceph.conf for rbd commands
+  const cephConfPath = `/tmp/ceph-rbd-delete-${Date.now()}.conf`;
+  const cephConf = `[global]
+mon host = ${storage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+key = ${storage.key}
+`;
+  fs.writeFileSync(cephConfPath, cephConf);
+  
+  // Delete RBD image
+  const deleteCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${storage.username}" rbd rm ${storage.pool}/${imageName}`;
+  
+  exec(deleteCmd, (error, stdout, stderr) => {
+    // Clean up temp conf file
+    try { fs.unlinkSync(cephConfPath); } catch (e) {}
+    
+    if (error) {
+      console.error('Error deleting RBD image:', error);
+      return res.status(500).json({ error: 'Failed to delete RBD image', details: stderr });
+    }
+    
+    res.json({ success: true, message: `RBD image ${imageName} deleted successfully` });
+  });
 });
 
 // Cloud-Init API routes
@@ -2555,30 +2764,162 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     // Create disk from base image
     const baseImagePath = `/var/lib/idve/images/${template.image}`;
 
-    // Ensure instances directory exists
-    if (!fs.existsSync('/var/lib/idve/instances')) {
-      fs.mkdirSync('/var/lib/idve/instances', { recursive: true });
-    }
+    // Handle RBD storage
+    let isRBD = false;
+    let diskPath, diskFormat;
+    let rbdConfig = null;
+    let rbdStorage = null;
 
-    // Copy base image to instance disk
-    exec(`cp ${baseImagePath} ${instanceDiskPath}`, (copyErr) => {
-      if (copyErr) {
-        console.error('Error copying base image:', copyErr);
-        return res.status(500).json({ error: 'Failed to create instance disk' });
+    if (storagePool && storagePool.startsWith('rbd:')) {
+      // RBD storage - extract pool name and create RBD path
+      const poolName = storagePool.split(':')[1];
+      isRBD = true;
+      
+      // Find RBD storage configuration
+      rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
+      if (!rbdStorage) {
+        console.error(`RBD storage configuration not found for pool ${poolName}`);
+        return res.status(400).json({ error: `RBD storage configuration not found for pool ${poolName}` });
       }
 
+      // Create temporary ceph.conf for rbd commands
+      const cephConfPath = `/tmp/ceph-rbd-${Date.now()}.conf`;
+      const cephConf = `[global]
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
+key = ${rbdStorage.key}
+`;
+      fs.writeFileSync(cephConfPath, cephConf);
+
+      // Use rbd import to create and import the image (it will create with default size)
+      const importCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${rbdStorage.username}" rbd import ${baseImagePath} ${poolName}/${instanceId} --image-format 2`;
+      console.log(`Importing base image to RBD: ${importCmd}`);
+
+      exec(importCmd, (importErr) => {
+        // Clean up temp conf file
+        try { fs.unlinkSync(cephConfPath); } catch (e) {}
+
+        if (importErr) {
+          console.error('Error importing base image to RBD:', importErr);
+          return res.status(500).json({ error: 'Failed to create RBD image' });
+        }
+
+        // Create QEMU ceph conf
+        const qemuCephConf = `[global]
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
+`;
+
+        const qemuTempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
+        fs.writeFileSync(qemuTempConfPath, qemuCephConf);
+
+        diskPath = `rbd:${poolName}/${instanceId}:conf=${qemuTempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
+        diskFormat = 'raw';
+
+        rbdConfig = {
+          pool: poolName,
+          image: instanceId,
+          conf: qemuTempConfPath,
+          username: rbdStorage.username,
+          key: rbdStorage.key
+        };
+
+        // Handle disk resizing after import
+        handleDiskResize();
+      });
+    } else {
+      // Local storage
+      diskPath = `/var/lib/idve/instances/${instanceId}.qcow2`;
+      diskFormat = 'qcow2';
+
+      // Ensure instances directory exists
+      if (!fs.existsSync('/var/lib/idve/instances')) {
+        fs.mkdirSync('/var/lib/idve/instances', { recursive: true });
+      }
+
+      copyBaseImageToLocal();
+    }
+
+    function copyBaseImageToRBD() {
+      // Use qemu-img to convert base image to the existing RBD image (don't specify -O since RBD is already raw)
+      const convertCmd = `qemu-img convert -f qcow2 ${baseImagePath} ${diskPath}`;
+      console.log(`Converting base image to RBD: ${convertCmd}`);
+
+      exec(convertCmd, (convertErr) => {
+        if (convertErr) {
+          console.error('Error converting base image to RBD:', convertErr);
+          return res.status(500).json({ error: 'Failed to copy base image to RBD' });
+        }
+
+        handleDiskResize();
+      });
+    }
+
+    function copyBaseImageToLocal() {
+      // Copy base image to instance disk
+      exec(`cp ${baseImagePath} ${diskPath}`, (copyErr) => {
+        if (copyErr) {
+          console.error('Error copying base image:', copyErr);
+          return res.status(500).json({ error: 'Failed to create instance disk' });
+        }
+
+        handleDiskResize();
+      });
+    }
+
+    function handleDiskResize() {
       // Handle disk sizing
       const resizeOperations = [];
       
       // If custom disk size is specified, resize to that size
       if (diskSize && parseInt(diskSize) > 0) {
         const targetSize = parseInt(diskSize);
-        console.log(`Resizing CloudInit disk to ${targetSize}G: ${instanceDiskPath}`);
-        resizeOperations.push(`qemu-img resize ${instanceDiskPath} ${targetSize}G`);
+        console.log(`Resizing CloudInit disk to ${targetSize}G`);
+        
+        if (isRBD) {
+          // For RBD, resize the RBD image with authentication
+          const resizeConfPath = `/tmp/ceph-resize-${Date.now()}.conf`;
+          const resizeConf = `[global]
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
+key = ${rbdStorage.key}
+`;
+          fs.writeFileSync(resizeConfPath, resizeConf);
+          resizeOperations.push(`CEPH_ARGS="--conf=${resizeConfPath} --id=${rbdStorage.username}" rbd resize ${rbdConfig.pool}/${rbdConfig.image} --size ${targetSize}G`);
+          // Clean up conf file after resize
+          setTimeout(() => { try { fs.unlinkSync(resizeConfPath); } catch (e) {} }, 1000);
+        } else {
+          // For local storage, use qemu-img
+          resizeOperations.push(`qemu-img resize ${diskPath} ${targetSize}G`);
+        }
       } else if (diskResize) {
         // Default behavior: add 10G if diskResize is enabled
-        console.log(`Resizing CloudInit disk +10G: ${instanceDiskPath}`);
-        resizeOperations.push(`qemu-img resize ${instanceDiskPath} +10G`);
+        console.log(`Resizing CloudInit disk +10G`);
+        
+        if (isRBD) {
+          // For RBD, resize the RBD image with authentication
+          const resizeConfPath2 = `/tmp/ceph-resize2-${Date.now()}.conf`;
+          const resizeConf2 = `[global]
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
+key = ${rbdStorage.key}
+`;
+          fs.writeFileSync(resizeConfPath2, resizeConf2);
+          resizeOperations.push(`CEPH_ARGS="--conf=${resizeConfPath2} --id=${rbdStorage.username}" rbd resize ${rbdConfig.pool}/${rbdConfig.image} --size 30G`); // Base 20G + 10G
+          // Clean up conf file after resize
+          setTimeout(() => { try { fs.unlinkSync(resizeConfPath2); } catch (e) {} }, 1000);
+        } else {
+          // For local storage, use qemu-img
+          resizeOperations.push(`qemu-img resize ${diskPath} +10G`);
+        }
       }
 
       // Execute resize operations if any
@@ -2593,87 +2934,90 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
       } else {
         createInstanceConfig();
       }
-    });
-  }
-
-  function createInstanceConfig() {
-    // Create instance configuration
-    const instanceConfig = {
-      id: instanceId,
-      name: instanceName,
-      host: 'localhost',
-      osType: template.os,
-      template: templateId,
-      cloudInit: true,
-      storagePool: storagePool || '/var/lib/idve/instances',
-      userDataPath: userDataPath,
-      metaDataPath: metaDataPath,
-      cloudInitIsoPath: cloudInitIsoPath,
-      diskPath: instanceDiskPath,
-      diskSize: diskSize || null, // Store custom disk size if specified
-      cpuSockets: 1,
-      cpuCores: 2,
-      cpuType: 'host',
-      memory: 2048,
-      // Network Configuration
-      networkBridge: bridge || 'virbr0',
-      vlanTag: vlanTag || null,
-      networkModel: networkModel || 'virtio',
-      macAddress: macAddress, // Add random MAC address
-      // User Configuration
-      username: username || null,
-      password: password || null,
-      // Domain & DNS
-      domain: domain || null,
-      dns1: dns1 || null,
-      dns2: dns2 || null,
-      // IP Configuration
-      ipAddressCIDR: ipAddressCIDR || null,
-      gateway: gateway || null,
-      // Other settings
-      graphics: 'virtio',
-      machine: 'q35',
-      bios: 'seabios',
-      qemuAgent: true, // Enable qemu-guest-agent for IP detection
-      addTpm: addTpm || false,
-      createdAt: new Date().toISOString(),
-      status: 'created'
-    };
-
-    // Add TPM configuration if enabled
-    if (addTpm) {
-      const tpmStatePath = `/var/lib/idve/instances/${instanceId}-tpm.raw`;
-      const tpmSocketPath = `/var/run/idve/${instanceId}-tpm.sock`;
-      const tpmPidPath = `/var/run/idve/${instanceId}-tpm.pid`;
-      
-      // Create TPM state file (4MB)
-      const tpmStateSize = 4 * 1024 * 1024;
-      if (!fs.existsSync(tpmStatePath)) {
-        exec(`dd if=/dev/zero of=${tpmStatePath} bs=1 count=0 seek=${tpmStateSize}`, (ddErr) => {
-          if (ddErr) {
-            console.error('Error creating TPM state file:', ddErr);
-          } else {
-            console.log(`TPM state file created: ${tpmStatePath}`);
-          }
-        });
-      }
-      
-      instanceConfig.tpmStatePath = tpmStatePath;
-      instanceConfig.tpmSocketPath = tpmSocketPath;
-      instanceConfig.tpmPidPath = tpmPidPath;
     }
 
-    // Save instance configuration
-    const configPath = `/etc/idve/${instanceId}.json`;
-    fs.writeFileSync(configPath, JSON.stringify(instanceConfig, null, 2));
-    console.log(`Cloud-Init instance configuration saved to ${configPath}`);
+    function createInstanceConfig() {
+      // Create instance configuration
+      const instanceConfig = {
+        id: instanceId,
+        name: instanceName,
+        host: 'localhost',
+        osType: template.os,
+        template: templateId,
+        cloudInit: true,
+        storagePool: storagePool || '/var/lib/idve/instances',
+        userDataPath: userDataPath,
+        metaDataPath: metaDataPath,
+        cloudInitIsoPath: cloudInitIsoPath,
+        diskPath: diskPath,
+        diskFormat: diskFormat,
+        diskSize: diskSize || null, // Store custom disk size if specified
+        isRBD: isRBD,
+        rbdConfig: rbdConfig,
+        cpuSockets: 1,
+        cpuCores: 2,
+        cpuType: 'host',
+        memory: 2048,
+        // Network Configuration
+        networkBridge: bridge || 'virbr0',
+        vlanTag: vlanTag || null,
+        networkModel: networkModel || 'virtio',
+        macAddress: macAddress, // Add random MAC address
+        // User Configuration
+        username: username || null,
+        password: password || null,
+        // Domain & DNS
+        domain: domain || null,
+        dns1: dns1 || null,
+        dns2: dns2 || null,
+        // IP Configuration
+        ipAddressCIDR: ipAddressCIDR || null,
+        gateway: gateway || null,
+        // Other settings
+        graphics: 'virtio',
+        machine: 'q35',
+        bios: 'seabios',
+        qemuAgent: true, // Enable qemu-guest-agent for IP detection
+        addTpm: addTpm || false,
+        createdAt: new Date().toISOString(),
+        status: 'created'
+      };
 
-    res.json({
-      success: true,
-      message: 'Cloud-Init instance created successfully',
-      instanceId: instanceId,
-      config: instanceConfig
-    });
+      // Add TPM configuration if enabled
+      if (addTpm) {
+        const tpmStatePath = `/var/lib/idve/instances/${instanceId}-tpm.raw`;
+        const tpmSocketPath = `/var/run/idve/${instanceId}-tpm.sock`;
+        const tpmPidPath = `/var/run/idve/${instanceId}-tpm.pid`;
+        
+        // Create TPM state file (4MB)
+        const tpmStateSize = 4 * 1024 * 1024;
+        if (!fs.existsSync(tpmStatePath)) {
+          exec(`dd if=/dev/zero of=${tpmStatePath} bs=1 count=0 seek=${tpmStateSize}`, (ddErr) => {
+            if (ddErr) {
+              console.error('Error creating TPM state file:', ddErr);
+            } else {
+              console.log(`TPM state file created: ${tpmStatePath}`);
+            }
+          });
+        }
+        
+        instanceConfig.tpmStatePath = tpmStatePath;
+        instanceConfig.tpmSocketPath = tpmSocketPath;
+        instanceConfig.tpmPidPath = tpmPidPath;
+      }
+
+      // Save instance configuration
+      const configPath = `/etc/idve/${instanceId}.json`;
+      fs.writeFileSync(configPath, JSON.stringify(instanceConfig, null, 2));
+      console.log(`Cloud-Init instance configuration saved to ${configPath}`);
+
+      res.json({
+        success: true,
+        message: 'Cloud-Init instance created successfully',
+        instanceId: instanceId,
+        config: instanceConfig
+      });
+    }
   }
 });
 

@@ -160,6 +160,75 @@
       </form>
     </div>
   </div>
+
+  <!-- RBD Images Modal -->
+  <div id="rbd-images-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4">
+    <div class="w-full max-w-7xl max-h-[95vh] overflow-hidden rounded-xl bg-background-light dark:bg-background-dark clay-shadow flex flex-col">
+      <div class="flex-shrink-0 p-6 border-b border-slate-200/10">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xl font-bold text-slate-900 dark:text-white">RBD Images - <span id="rbd-storage-name"></span></h3>
+          <button onclick="closeRbdImagesModal()" class="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 transition-colors">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <p class="text-sm text-slate-500 dark:text-slate-400 mt-2">
+          Raw disk images in Ceph RBD pool: <span id="rbd-pool-name" class="font-medium"></span>
+        </p>
+      </div>
+
+      <div class="flex-shrink-0 p-6 border-b border-slate-200/10">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-4">
+            <div class="relative">
+              <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">search</span>
+              <input type="text" id="rbd-search" placeholder="Search RBD images..." class="w-64 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 pl-10 text-sm focus:border-primary focus:ring-primary focus:ring-2 focus:ring-primary/20 transition-colors">
+            </div>
+            <button onclick="loadRbdImages()" class="inline-flex items-center px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">
+              <span class="material-symbols-outlined mr-2">refresh</span>
+              Refresh
+            </button>
+          </div>
+          <div class="text-sm text-slate-500 dark:text-slate-400">
+            <span id="rbd-images-count">0</span> images
+          </div>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-6">
+        <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[900px]">
+              <thead class="bg-slate-100 dark:bg-slate-800/50 sticky top-0">
+                <tr>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Image Name</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Size</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Format</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Features</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Created</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Modified</th>
+                  <th class="px-6 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rbd-images-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+                <!-- RBD images will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+
+          <div id="rbd-loading-indicator" class="text-center py-12 text-slate-500 dark:text-slate-400">
+            <span class="material-symbols-outlined animate-spin text-2xl mr-3">refresh</span>
+            <span class="text-lg">Loading RBD images...</span>
+          </div>
+
+          <div id="rbd-no-images" class="text-center py-12 text-slate-500 dark:text-slate-400 hidden">
+            <span class="material-symbols-outlined text-5xl mb-4 text-slate-300 dark:text-slate-600">storage</span>
+            <h3 class="text-lg font-medium text-slate-900 dark:text-white mb-2">No RBD Images Found</h3>
+            <p class="text-sm">This storage pool doesn't contain any RBD disk images yet.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
   <script src="/socket.io/socket.io.js"></script>
   <script src="storages.js"></script>
 

@@ -1,5 +1,118 @@
 const socket = io();
 
+// Authentication functions
+async function checkAuthStatus() {
+  try {
+    const response = await fetch('/api/auth-status');
+    const data = await response.json();
+    return data.authenticated;
+  } catch (error) {
+    console.error('Error checking auth status:', error);
+    return false;
+  }
+}
+
+function showLoginModal() {
+  // Create login modal if it doesn't exist
+  if (!document.getElementById('login-modal')) {
+    const modal = document.createElement('div');
+    modal.id = 'login-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+      <div class="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md mx-4">
+        <h2 class="text-xl font-semibold text-slate-900 dark:text-white mb-4">Login to Dashboard</h2>
+        <form id="login-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Username</label>
+            <input type="text" id="username" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:border-primary focus:ring-primary" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Password</label>
+            <input type="password" id="password" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:border-primary focus:ring-primary" required>
+          </div>
+          <div id="login-error" class="text-red-500 text-sm hidden"></div>
+          <button type="submit" id="login-btn" class="w-full bg-primary text-white py-2 px-4 rounded-lg hover:bg-primary/90 transition">
+            <span class="inline-block mr-2">Login</span>
+            <span class="material-symbols-outlined text-sm">login</span>
+          </button>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('login-modal').classList.remove('hidden');
+  document.getElementById('login-modal').classList.add('flex');
+}
+
+function hideLoginModal() {
+  const modal = document.getElementById('login-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const loginBtn = document.getElementById('login-btn');
+  const loginError = document.getElementById('login-error');
+
+  // Show loading state
+  loginBtn.disabled = true;
+  loginBtn.innerHTML = '<span class="inline-block mr-2">Logging in...</span><span class="material-symbols-outlined text-sm animate-spin">refresh</span>';
+
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      hideLoginModal();
+      // Reload the page to initialize
+      window.location.reload();
+    } else {
+      loginError.textContent = data.message || 'Login failed';
+      loginError.classList.remove('hidden');
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    loginError.textContent = 'Network error. Please try again.';
+    loginError.classList.remove('hidden');
+  } finally {
+    // Reset button state
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = '<span class="inline-block mr-2">Login</span><span class="material-symbols-outlined text-sm">login</span>';
+  }
+}
+
+// Initialize authentication on page load
+document.addEventListener('DOMContentLoaded', async function() {
+  const isAuthenticated = await checkAuthStatus();
+
+  if (!isAuthenticated) {
+    showLoginModal();
+  } else {
+    // Initialize if authenticated
+    loadNetworks();
+  }
+
+  // Setup login form
+  document.addEventListener('submit', function(e) {
+    if (e.target.id === 'login-form') {
+      handleLogin(e);
+    }
+  });
+});
+
 // Mobile navigation functions
 function setActiveNav(navId) {
   // Remove active class from all nav items
@@ -253,7 +366,7 @@ function deleteNetwork(name) {
 }
 
 // Load initial data
-loadNetworks();
+// loadNetworks(); // Removed - now called conditionally in auth check
 
 // Test interface loading on page load
 document.addEventListener('DOMContentLoaded', function() {

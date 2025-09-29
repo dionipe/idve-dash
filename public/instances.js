@@ -7,6 +7,119 @@ function generateRandomMac() {
   return mac.join(':');
 }
 
+// Authentication functions
+async function checkAuthStatus() {
+  try {
+    const response = await fetch('/api/auth-status');
+    const data = await response.json();
+    return data.authenticated;
+  } catch (error) {
+    console.error('Error checking auth status:', error);
+    return false;
+  }
+}
+
+function showLoginModal() {
+  // Create login modal if it doesn't exist
+  if (!document.getElementById('login-modal')) {
+    const modal = document.createElement('div');
+    modal.id = 'login-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+      <div class="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md mx-4">
+        <h2 class="text-xl font-semibold text-slate-900 dark:text-white mb-4">Login to Dashboard</h2>
+        <form id="login-form" class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Username</label>
+            <input type="text" id="username" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:border-primary focus:ring-primary" required>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Password</label>
+            <input type="password" id="password" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-2 text-sm focus:border-primary focus:ring-primary" required>
+          </div>
+          <div id="login-error" class="text-red-500 text-sm hidden"></div>
+          <button type="submit" id="login-btn" class="w-full bg-primary text-white py-2 px-4 rounded-lg hover:bg-primary/90 transition">
+            <span class="inline-block mr-2">Login</span>
+            <span class="material-symbols-outlined text-sm">login</span>
+          </button>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+  document.getElementById('login-modal').classList.remove('hidden');
+  document.getElementById('login-modal').classList.add('flex');
+}
+
+function hideLoginModal() {
+  const modal = document.getElementById('login-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+
+  const username = document.getElementById('username').value;
+  const password = document.getElementById('password').value;
+  const loginBtn = document.getElementById('login-btn');
+  const loginError = document.getElementById('login-error');
+
+  // Show loading state
+  loginBtn.disabled = true;
+  loginBtn.innerHTML = '<span class="inline-block mr-2">Logging in...</span><span class="material-symbols-outlined text-sm animate-spin">refresh</span>';
+
+  try {
+    const response = await fetch('/api/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      hideLoginModal();
+      // Reload the page to initialize
+      window.location.reload();
+    } else {
+      loginError.textContent = data.message || 'Login failed';
+      loginError.classList.remove('hidden');
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    loginError.textContent = 'Network error. Please try again.';
+    loginError.classList.remove('hidden');
+  } finally {
+    // Reset button state
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = '<span class="inline-block mr-2">Login</span><span class="material-symbols-outlined text-sm">login</span>';
+  }
+}
+
+// Initialize authentication on page load
+document.addEventListener('DOMContentLoaded', async function() {
+  const isAuthenticated = await checkAuthStatus();
+
+  if (!isAuthenticated) {
+    showLoginModal();
+  } else {
+    // Initialize if authenticated
+    loadInstances();
+  }
+
+  // Setup login form
+  document.addEventListener('submit', function(e) {
+    if (e.target.id === 'login-form') {
+      handleLogin(e);
+    }
+  });
+});
+
 // Mobile navigation functions
 function setActiveNav(navId) {
   // Remove active class from all nav items
@@ -53,7 +166,7 @@ document.addEventListener('click', function(event) {
 // Global variables
 let isLoadingInstances = false;
 let currentStep = 0;
-let totalSteps = 3;
+let totalSteps = 7; // Updated to include all steps: general, os, system, disk, cpu, memory, network, confirm
 
 function showCreateInstanceModal() {
   document.getElementById('modal').classList.remove('hidden');
@@ -735,7 +848,9 @@ function loadInstances() {
 }
 
 function loadDashboard() {
-  fetch('/api/instances')
+  fetch('/api/instances', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     document.getElementById('total-instances').textContent = data.length;
@@ -761,7 +876,9 @@ function loadDashboard() {
 }
 
 function populateISOs() {
-  fetch('/api/isos')
+  fetch('/api/isos', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     const select = document.getElementById('cdrom');
@@ -795,7 +912,9 @@ function populateBridges() {
 }
 
 function populateEditBridges() {
-  fetch('/api/networks')
+  fetch('/api/networks', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     const select = document.getElementById('edit-network-bridge');
@@ -812,7 +931,9 @@ function populateEditBridges() {
 }
 
 function populateCloudInitBridges() {
-  fetch('/api/networks')
+  fetch('/api/networks', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     const select = document.getElementById('cloudinit-bridge');
@@ -829,7 +950,9 @@ function populateCloudInitBridges() {
 }
 
 function populateStoragePools() {
-  fetch('/api/storages')
+  fetch('/api/storages', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     const select = document.getElementById('storage-pool');
@@ -837,8 +960,49 @@ function populateStoragePools() {
     data.forEach(storage => {
       const option = document.createElement('option');
       option.value = storage.path;
-      option.textContent = `${storage.name} (${storage.path}) - ${storage.capacity || 'Capacity unknown'}`;
+
+      // Enhanced display for different storage types
+      let displayText = `${storage.name}`;
+      if (storage.type === 'RBD') {
+        displayText += ` (RBD: ${storage.pool}) - ${storage.capacity || 'Capacity unknown'}`;
+        option.dataset.type = 'RBD';
+      } else {
+        displayText += ` (${storage.type}) - ${storage.capacity || 'Capacity unknown'}`;
+        option.dataset.type = storage.type;
+      }
+
+      option.textContent = displayText;
       select.appendChild(option);
+    });
+
+    // Add change listener for storage pool selection
+    select.addEventListener('change', function() {
+      const selectedOption = this.options[this.selectedIndex];
+      const storageType = selectedOption.dataset.type;
+
+      // Show warning for RBD storage
+      const warningDiv = document.getElementById('create-rbd-warning');
+      if (storageType === 'RBD') {
+        if (!warningDiv) {
+          const warning = document.createElement('div');
+          warning.id = 'create-rbd-warning';
+          warning.className = 'mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg';
+          warning.innerHTML = `
+            <div class="flex items-start">
+              <span class="material-symbols-outlined text-amber-600 dark:text-amber-400 mr-2 mt-0.5">warning</span>
+              <div>
+                <p class="text-sm font-medium text-amber-800 dark:text-amber-200">RBD Storage Selected</p>
+                <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  This instance will use Ceph RBD distributed storage. Ensure Ceph cluster is properly configured and accessible.
+                </p>
+              </div>
+            </div>
+          `;
+          this.parentNode.appendChild(warning);
+        }
+      } else if (warningDiv) {
+        warningDiv.remove();
+      }
     });
   });
 }
@@ -889,7 +1053,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // Helper functions for edit modal
 function populateEditBridges() {
   return new Promise((resolve, reject) => {
-    fetch('/api/networks')
+    fetch('/api/networks', {
+      credentials: 'include'
+    })
     .then(response => response.json())
     .then(data => {
       const select = document.getElementById('edit-network-bridge');
@@ -913,7 +1079,9 @@ function populateEditBridges() {
 
 function populateEditISOs() {
   return new Promise((resolve, reject) => {
-    fetch('/api/isos')
+    fetch('/api/isos', {
+      credentials: 'include'
+    })
     .then(response => response.json())
     .then(data => {
       const select = document.getElementById('edit-cdrom');
@@ -981,7 +1149,9 @@ function removeCdDrive(button) {
 }
 
 function populateDriveISOs(selectElement) {
-  fetch('/api/isos')
+  fetch('/api/isos', {
+    credentials: 'include'
+  })
   .then(response => response.json())
   .then(data => {
     selectElement.innerHTML = '<option value="">None</option>';
@@ -1140,8 +1310,49 @@ function populateCloudInitStoragePools() {
     data.forEach(storage => {
       const option = document.createElement('option');
       option.value = storage.path;
-      option.textContent = `${storage.name} (${storage.type})`;
+
+      // Enhanced display for different storage types
+      let displayText = `${storage.name}`;
+      if (storage.type === 'RBD') {
+        displayText += ` (RBD: ${storage.pool}) - ${storage.capacity || 'Capacity unknown'}`;
+        option.dataset.type = 'RBD';
+      } else {
+        displayText += ` (${storage.type}) - ${storage.capacity || 'Capacity unknown'}`;
+        option.dataset.type = storage.type;
+      }
+
+      option.textContent = displayText;
       select.appendChild(option);
+    });
+
+    // Add change listener for storage pool selection
+    select.addEventListener('change', function() {
+      const selectedOption = this.options[this.selectedIndex];
+      const storageType = selectedOption.dataset.type;
+
+      // Show warning for RBD storage
+      const warningDiv = document.getElementById('rbd-warning');
+      if (storageType === 'RBD') {
+        if (!warningDiv) {
+          const warning = document.createElement('div');
+          warning.id = 'rbd-warning';
+          warning.className = 'mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg';
+          warning.innerHTML = `
+            <div class="flex items-start">
+              <span class="material-symbols-outlined text-amber-600 dark:text-amber-400 mr-2 mt-0.5">warning</span>
+              <div>
+                <p class="text-sm font-medium text-amber-800 dark:text-amber-200">RBD Storage Selected</p>
+                <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                  This instance will use Ceph RBD distributed storage. Ensure Ceph cluster is properly configured and accessible.
+                </p>
+              </div>
+            </div>
+          `;
+          this.parentNode.appendChild(warning);
+        }
+      } else if (warningDiv) {
+        warningDiv.remove();
+      }
     });
   })
   .catch(error => {
@@ -1161,6 +1372,7 @@ function createCloudInitInstance() {
   const instanceName = formData.get('instanceName');
   const username = formData.get('username');
   const password = formData.get('password');
+  const storagePool = formData.get('storagePool');
 
   if (!templateId) {
     showNotification('Please select a CloudInit template', 'error');
@@ -1177,6 +1389,18 @@ function createCloudInitInstance() {
   if (!password) {
     showNotification('Password is required', 'error');
     return;
+  }
+  if (!storagePool) {
+    showNotification('Please select a storage pool', 'error');
+    return;
+  }
+
+  // Additional validation for RBD storage
+  if (storagePool && storagePool.startsWith('rbd:')) {
+    const confirmRBD = confirm('You have selected RBD storage. This requires a properly configured Ceph cluster. Continue?');
+    if (!confirmRBD) {
+      return;
+    }
   }
 
   const instanceData = {
@@ -1230,7 +1454,10 @@ function createCloudInitInstance() {
     if (data.success) {
       closeCloudInitModal();
       loadInstances(); // Refresh the instances list
-      showNotification('Cloud-Init instance created successfully!', 'success');
+
+      // Enhanced success message
+      const storageType = storagePool && storagePool.startsWith('rbd:') ? 'RBD (Ceph)' : 'Local';
+      showNotification(`Cloud-Init instance "${instanceName}" created successfully using ${storageType} storage!`, 'success');
     } else {
       throw new Error(data.message || 'Failed to create Cloud-Init instance');
     }
@@ -1302,7 +1529,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // Load initial data only once
-  loadInstances();
+  // loadInstances(); // Removed - now called conditionally in auth check
   loadDashboard();
   
   // Setup OS type listener for form defaults

@@ -307,6 +307,7 @@
                 <option value="">Select Storage Pool</option>
                 <!-- Storage pools will be populated via JS -->
               </select>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Select storage pool for instance disk. RBD provides distributed Ceph storage.</p>
             </div>
             <div>
               <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Disk Size (GiB)</label>
@@ -806,7 +807,7 @@
             <select id="cloudinit-storage-pool" name="storagePool" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:border-primary focus:ring-primary">
               <option value="">Loading storage pools...</option>
             </select>
-            <p class="text-xs text-slate-500 dark:text-slate-400">Select the storage pool where the instance disk will be created.</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Select the storage pool where the instance disk will be created. RBD storage pools provide distributed block storage via Ceph.</p>
           </div>
         </div>
 
