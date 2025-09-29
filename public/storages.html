@@ -122,6 +122,7 @@
             <option value="Local">Local</option>
             <option value="NFS">NFS</option>
             <option value="iSCSI">iSCSI</option>
+            <option value="RBD">RBD (Ceph)</option>
           </select>
         </div>
         <div class="mb-4">
@@ -135,6 +136,24 @@
         <div class="mb-4">
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Path/Target</label>
           <input type="text" id="storage-path" name="path" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary" required>
+        </div>
+        <div id="rbd-fields" class="hidden space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Monitors</label>
+            <input type="text" id="storage-monitors" name="monitors" placeholder="192.168.200.1,192.168.200.2" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Pool</label>
+            <input type="text" id="storage-pool" name="pool" placeholder="idve" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Username</label>
+            <input type="text" id="storage-username" name="username" placeholder="admin" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Key</label>
+            <input type="password" id="storage-key" name="key" placeholder="AQC2RmJk1jQgBhAAcjB5ONxgOAcs8ngARcUE2g==" class="w-full rounded-lg border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 px-3 text-sm focus:border-primary focus:ring-primary">
+          </div>
         </div>
         <button type="submit" class="w-full rounded-lg bg-primary py-2 font-semibold text-white transition hover:bg-primary/90">Create</button>
       </form>

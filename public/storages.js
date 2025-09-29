@@ -13,7 +13,7 @@ function loadStorages() {
         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white">${storage.name}</td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">${storage.type}</td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">${storage.content}</td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">${storage.path}</td>
+        <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">${storage.type === 'RBD' ? storage.pool : storage.path}</td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">${storage.shared}</td>
         <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
           <span class="material-symbols-outlined ${storage.enabled ? 'text-green-500' : 'text-red-500'}">${storage.enabled ? 'check_circle' : 'cancel'}</span>
@@ -31,12 +31,32 @@ function loadStorages() {
 function showCreateStorageModal() {
   document.getElementById('storage-modal').classList.remove('hidden');
   document.getElementById('storage-modal').classList.add('flex');
+  // Reset form
+  document.getElementById('create-storage-form').reset();
+  // Hide RBD fields initially
+  document.getElementById('rbd-fields').classList.add('hidden');
+  // Make path field required initially
+  document.getElementById('storage-path').required = true;
 }
 
 function closeStorageModal() {
   document.getElementById('storage-modal').classList.add('hidden');
   document.getElementById('storage-modal').classList.remove('flex');
 }
+
+// Handle storage type change to show/hide RBD fields
+document.getElementById('storage-type').addEventListener('change', function() {
+  const rbdFields = document.getElementById('rbd-fields');
+  const pathField = document.getElementById('storage-path');
+  
+  if (this.value === 'RBD') {
+    rbdFields.classList.remove('hidden');
+    pathField.required = false; // Path not required for RBD
+  } else {
+    rbdFields.classList.add('hidden');
+    pathField.required = true; // Path required for other types
+  }
+});
 
 document.getElementById('create-storage-form').addEventListener('submit', function(e) {
   e.preventDefault();

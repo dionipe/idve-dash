@@ -1859,17 +1859,60 @@ app.get('/api/storages', requireAuth, (req, res) => {
 });
 
 app.post('/api/storages', requireAuth, (req, res) => {
-  const { name, type, content, path } = req.body;
-  const newStorage = {
-    name,
-    type,
-    content,
-    path,
-    shared: 'No',
-    enabled: true
-  };
-  storages.push(newStorage);
-  res.json({ message: 'Storage created' });
+  const { name, type, content, path, monitors, pool, username, key } = req.body;
+  
+  let newStorage;
+  
+  if (type === 'RBD') {
+    // Validate RBD required fields
+    if (!monitors || !pool || !username || !key) {
+      return res.status(400).json({ error: 'Monitors, pool, username, and key are required for RBD storage' });
+    }
+    
+    newStorage = {
+      name,
+      type,
+      content,
+      path: `rbd:${pool}`, // RBD path format
+      monitors,
+      pool,
+      username,
+      key,
+      shared: 'Yes',
+      enabled: true
+    };
+    
+    // Test RBD connection
+    const { exec } = require('child_process');
+    const rbdCmd = `rbd --id ${username} --key ${key} --mon-host ${monitors.replace(/,/g, ':6789,')}:6789 ls ${pool}`;
+    
+    exec(rbdCmd, (error, stdout, stderr) => {
+      if (error) {
+        console.error('RBD connection test failed:', error);
+        return res.status(400).json({ error: 'Failed to connect to RBD cluster. Please check your configuration.' });
+      }
+      
+      console.log('RBD connection successful, available images:', stdout);
+      storages.push(newStorage);
+      res.json({ message: 'RBD storage created and connected successfully' });
+    });
+  } else {
+    // Handle other storage types (Local, NFS, iSCSI)
+    if (!path) {
+      return res.status(400).json({ error: 'Path is required for this storage type' });
+    }
+    
+    newStorage = {
+      name,
+      type,
+      content,
+      path,
+      shared: 'No',
+      enabled: true
+    };
+    storages.push(newStorage);
+    res.json({ message: 'Storage created' });
+  }
 });
 
 app.delete('/api/storages/:name', requireAuth, (req, res) => {
