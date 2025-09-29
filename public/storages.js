@@ -363,8 +363,48 @@ function loadRbdImages() {
       row.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/50';
 
       const sizeGB = image.size ? (image.size / (1024 * 1024 * 1024)).toFixed(2) + ' GB' : '-';
-      const created = image.create_timestamp ? new Date(image.create_timestamp * 1000).toLocaleString() : '-';
-      const modified = image.modification_timestamp ? new Date(image.modification_timestamp * 1000).toLocaleString() : '-';
+      
+      // Helper function to parse timestamps more robustly
+      function parseTimestamp(timestamp) {
+        if (!timestamp) return '-';
+        
+        // If it's already a formatted date string from RBD, return as-is
+        if (typeof timestamp === 'string' && timestamp.includes(' ')) {
+          return timestamp;
+        }
+        
+        try {
+          // Try different timestamp formats for backward compatibility
+          let date;
+          
+          // If it's a number, try as milliseconds first, then as seconds
+          if (typeof timestamp === 'number') {
+            // First try as milliseconds (if > 1e12, it's likely milliseconds)
+            if (timestamp > 1e12) {
+              date = new Date(timestamp);
+            } else {
+              // Try as seconds
+              date = new Date(timestamp * 1000);
+            }
+          } else if (typeof timestamp === 'string') {
+            // Try parsing as ISO string or other string format
+            date = new Date(timestamp);
+          }
+          
+          // Check if date is valid
+          if (date && !isNaN(date.getTime())) {
+            return date.toLocaleString();
+          }
+          
+          return timestamp || '-';
+        } catch (error) {
+          console.warn('Error parsing timestamp:', timestamp, error);
+          return timestamp || '-';
+        }
+      }
+      
+      const created = parseTimestamp(image.create_timestamp);
+      const modified = parseTimestamp(image.modification_timestamp);
       
       // Format features as badges
       const featuresHtml = image.features && image.features.length > 0 

@@ -2477,7 +2477,7 @@ key = ${storage.key}
                   format: info.format || 'Unknown',
                   features: info.features || [],
                   create_timestamp: info.create_timestamp,
-                  modification_timestamp: info.modification_timestamp
+                  modification_timestamp: info.modify_timestamp || info.modification_timestamp
                 });
               } catch (parseError) {
                 console.error(`Error parsing RBD info for ${imageName}:`, parseError);
@@ -2800,43 +2800,56 @@ key = ${rbdStorage.key}
 `;
       fs.writeFileSync(cephConfPath, cephConf);
 
-      // Use rbd import to create and import the image (it will create with default size)
-      const importCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${rbdStorage.username}" rbd import ${baseImagePath} ${poolName}/${instanceId} --image-format 2`;
-      console.log(`Importing base image to RBD: ${importCmd}`);
+      // Convert base image to raw format first, then import to RBD
+      const rawImagePath = `/tmp/${instanceId}-raw.img`;
+      const convertCmd = `qemu-img convert -f qcow2 -O raw ${baseImagePath} ${rawImagePath}`;
+      console.log(`Converting base image to raw: ${convertCmd}`);
 
-      exec(importCmd, (importErr) => {
-        // Clean up temp conf file
-        try { fs.unlinkSync(cephConfPath); } catch (e) {}
-
-        if (importErr) {
-          console.error('Error importing base image to RBD:', importErr);
-          return res.status(500).json({ error: 'Failed to create RBD image' });
+      exec(convertCmd, (convertErr) => {
+        if (convertErr) {
+          console.error('Error converting base image to raw:', convertErr);
+          return res.status(500).json({ error: 'Failed to convert base image' });
         }
 
-        // Create QEMU ceph conf
-        const qemuCephConf = `[global]
+        // Now import the raw image to RBD
+        const importCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${rbdStorage.username}" rbd import ${rawImagePath} ${poolName}/${instanceId} --image-format 2`;
+        console.log(`Importing raw image to RBD: ${importCmd}`);
+
+        exec(importCmd, (importErr) => {
+          // Clean up temp files
+          try { fs.unlinkSync(cephConfPath); } catch (e) {}
+          try { fs.unlinkSync(rawImagePath); } catch (e) {}
+
+          if (importErr) {
+            console.error('Error importing raw image to RBD:', importErr);
+            return res.status(500).json({ error: 'Failed to create RBD image' });
+          }
+
+          // Create QEMU ceph conf
+          const qemuCephConf = `[global]
 mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
 auth_cluster_required = cephx
 auth_service_required = cephx
 auth_client_required = cephx
 `;
 
-        const qemuTempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
-        fs.writeFileSync(qemuTempConfPath, qemuCephConf);
+          const qemuTempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
+          fs.writeFileSync(qemuTempConfPath, qemuCephConf);
 
-        diskPath = `rbd:${poolName}/${instanceId}:conf=${qemuTempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
-        diskFormat = 'raw';
+          diskPath = `rbd:${poolName}/${instanceId}:conf=${qemuTempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
+          diskFormat = 'raw';
 
-        rbdConfig = {
-          pool: poolName,
-          image: instanceId,
-          conf: qemuTempConfPath,
-          username: rbdStorage.username,
-          key: rbdStorage.key
-        };
+          rbdConfig = {
+            pool: poolName,
+            image: instanceId,
+            conf: qemuTempConfPath,
+            username: rbdStorage.username,
+            key: rbdStorage.key
+          };
 
-        // Handle disk resizing after import
-        handleDiskResize();
+          // Handle disk resizing after import
+          handleDiskResize();
+        });
       });
     } else {
       // Local storage
