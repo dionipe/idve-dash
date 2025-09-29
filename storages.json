@@ -1,0 +1,62 @@
+[
+  {
+    "name": "Local",
+    "type": "Local",
+    "content": "ISO Images",
+    "path": "/var/lib/idve/isos",
+    "shared": "No",
+    "enabled": true
+  },
+  {
+    "name": "Local",
+    "type": "Local",
+    "content": "Template",
+    "path": "/var/lib/idve/images",
+    "shared": "No",
+    "enabled": true
+  },
+  {
+    "name": "Local",
+    "type": "Local",
+    "content": "Disk images",
+    "path": "/var/lib/idve/instances",
+    "shared": "No",
+    "enabled": true
+  },
+  {
+    "name": "Ceph-RBD",
+    "type": "RBD",
+    "content": "Disk images",
+    "path": "rbd:idve",
+    "monitors": "192.168.200.1,192.168.200.2",
+    "pool": "idve",
+    "username": "admin",
+    "key": "AQC2RmJk1jQgBhAAcjB5ONxgOAcs8ngARcUE2g==",
+    "shared": "Yes",
+    "enabled": true
+  },
+  {
+    "name": "Test RBD Storage",
+    "type": "RBD",
+    "content": "Disk images",
+    "path": "rbd:idve",
+    "monitors": "192.168.200.1,192.168.200.2",
+    "pool": "idve",
+    "username": "admin",
+    "key": "AQC2RmJk1jQgBhAAcjB5ONxgOAcs8ngARcUE2g==",
+    "shared": "Yes",
+    "enabled": true
+  },
+  {
+    "name": "Test RBD Storage",
+    "type": "RBD",
+    "content": "Disk images",
+    "path": "rbd:idve",
+    "monitors": "192.168.200.1,192.168.200.2",
+    "pool": "idve",
+    "username": "admin",
+    "key": "AQC2RmJk1jQgBhAAcjB5ONxgOAcs8ngARcUE2g==",
+    "shared": "Yes",
+    "enabled": true
+  }
+]

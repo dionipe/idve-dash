@@ -1962,47 +1962,44 @@ function getStorageCapacity(storage, callback) {
       return callback(null, 'N/A');
     }
     
-    const monitors = rbdStorage.monitors.replace(/,/g, ':6789,') + ':6789';
+    // Create temporary ceph.conf for this connection
+    const cephConf = `[global]
+mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+keyring = /dev/null
+`;
+    
+    const tempConfPath = `/tmp/ceph-capacity-${Date.now()}.conf`;
+    fs.writeFileSync(tempConfPath, cephConf);
+    
     // Get RBD pool stats
-    exec(`rbd --id ${rbdStorage.username} --key ${rbdStorage.key} --mon-host ${monitors} du ${storage.pool}`, (error, stdout, stderr) => {
+    exec(`CEPH_CONF=${tempConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} pool stats ${storage.pool}`, (error, stdout, stderr) => {
+      // Clean up temp file
+      try { fs.unlinkSync(tempConfPath); } catch (e) {}
+      
       if (error) {
         console.error('Error getting RBD pool usage:', error);
         return callback(null, 'Error');
       }
       
       try {
-        // Parse rbd du output
+        // Parse rbd pool stats output
         const lines = stdout.trim().split('\n');
-        let totalUsed = 0;
+        let provisionedSize = '0 B';
         
         lines.forEach(line => {
-          // Look for lines like "TOTAL        1024 MB"
-          if (line.includes('TOTAL')) {
-            const parts = line.trim().split(/\s+/);
-            if (parts.length >= 3) {
-              const size = parseFloat(parts[1]);
-              const unit = parts[2].toUpperCase();
-              
-              // Convert to GB
-              if (unit === 'MB') {
-                totalUsed = size / 1024;
-              } else if (unit === 'GB') {
-                totalUsed = size;
-              } else if (unit === 'TB') {
-                totalUsed = size * 1024;
-              }
-            }
+          if (line.startsWith('Provisioned Size:')) {
+            provisionedSize = line.split(':')[1].trim();
           }
         });
         
-        if (totalUsed > 0) {
-          callback(null, `${totalUsed.toFixed(1)} GB used`);
-        } else {
-          callback(null, '0 GB used');
-        }
+        // For RBD, we show provisioned size as capacity info
+        callback(null, provisionedSize);
       } catch (parseError) {
-        console.error('Error parsing RBD du output:', parseError);
-        callback(null, 'Parse error');
+        console.error('Error parsing RBD pool stats:', parseError);
+        callback(null, 'Parse Error');
       }
     });
   } else {
@@ -2081,11 +2078,28 @@ app.post('/api/storages', requireAuth, (req, res) => {
     
     // Test RBD connection
     const { exec } = require('child_process');
-    const rbdCmd = `rbd --id ${username} --key ${key} --mon-host ${monitors.replace(/,/g, ':6789,')}:6789 ls ${pool}`;
+    // Create temporary ceph.conf for this connection
+    const cephConf = `[global]
+mon host = ${monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+keyring = /dev/null
+`;
+    
+    const fs = require('fs');
+    const tempConfPath = `/tmp/ceph-${Date.now()}.conf`;
+    fs.writeFileSync(tempConfPath, cephConf);
+    
+    const rbdCmd = `CEPH_CONF=${tempConfPath} rbd --id ${username} --key ${key} ls ${pool}`;
     
     exec(rbdCmd, (error, stdout, stderr) => {
+      // Clean up temp file
+      try { fs.unlinkSync(tempConfPath); } catch (e) {}
+      
       if (error) {
         console.error('RBD connection test failed:', error);
+        console.error('stderr:', stderr);
         return res.status(400).json({ error: 'Failed to connect to RBD cluster. Please check your configuration.' });
       }
       
