@@ -970,9 +970,9 @@ keyring = /dev/null
           }
           
           // Simplified QEMU command that works
-          if (config.osType === 'windows') {
-            // Use VirtIO SCSI Single for Windows VMs (best performance per Proxmox best practices)
-            qemuCmd += ` -device virtio-scsi-pci,id=scsi0`;
+          if (config.diskBus === 'scsi') {
+            // Use VirtIO SCSI for better performance
+            qemuCmd += ` -device ${config.scsiController || 'virtio-scsi-pci'},id=scsi0`;
             qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=none,id=drive0,cache=writeback,discard=on`;
             qemuCmd += ` -device scsi-hd,drive=drive0,bus=scsi0.0`;
           } else {
@@ -2959,6 +2959,9 @@ key = ${rbdStorage.key}
         diskSize: diskSize || 20, // Default to 20GB if not specified
         isRBD: isRBD,
         rbdConfig: rbdConfig,
+        scsiController: 'virtio-scsi-pci',
+        diskBus: 'scsi',
+        diskScsiController: 'virtio-scsi-pci',
         cpuSockets: 1,
         cpuCores: 2,
         cpuType: 'host',
