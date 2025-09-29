@@ -1,7 +1,7 @@
 {
   "name": "idve-dash",
   "version": "1.1.0",
-  "description": "Modern web-based dashboard for managing virtual machines",
+  "description": "IDVE Modern web-based dashboard for managing virtual machines",
   "main": "server.js",
   "scripts": {
     "start": "node server.js > /var/log/idve-dash.log 2>&1 &",

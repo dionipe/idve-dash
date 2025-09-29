@@ -794,7 +794,7 @@ function populateStoragePools() {
     data.forEach(storage => {
       const option = document.createElement('option');
       option.value = storage.path;
-      option.textContent = `${storage.name} (${storage.path})`;
+      option.textContent = `${storage.name} (${storage.path}) - ${storage.capacity || 'Capacity unknown'}`;
       select.appendChild(option);
     });
   });

@@ -1925,8 +1925,106 @@ let storages = [
   { name: 'Local', type: 'Local', content: 'Disk images', path: '/var/lib/idve/instances', shared: 'No', enabled: true }
 ];
 
+// Helper function to get storage capacity and usage
+function getStorageCapacity(storage, callback) {
+  if (storage.type === 'RBD') {
+    // For RBD storage, get pool usage
+    const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === storage.pool);
+    if (!rbdStorage) {
+      return callback(null, 'N/A');
+    }
+    
+    const monitors = rbdStorage.monitors.replace(/,/g, ':6789,') + ':6789';
+    // Get RBD pool stats
+    exec(`rbd --id ${rbdStorage.username} --key ${rbdStorage.key} --mon-host ${monitors} du ${storage.pool}`, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Error getting RBD pool usage:', error);
+        return callback(null, 'Error');
+      }
+      
+      try {
+        // Parse rbd du output
+        const lines = stdout.trim().split('\n');
+        let totalUsed = 0;
+        
+        lines.forEach(line => {
+          // Look for lines like "TOTAL        1024 MB"
+          if (line.includes('TOTAL')) {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 3) {
+              const size = parseFloat(parts[1]);
+              const unit = parts[2].toUpperCase();
+              
+              // Convert to GB
+              if (unit === 'MB') {
+                totalUsed = size / 1024;
+              } else if (unit === 'GB') {
+                totalUsed = size;
+              } else if (unit === 'TB') {
+                totalUsed = size * 1024;
+              }
+            }
+          }
+        });
+        
+        if (totalUsed > 0) {
+          callback(null, `${totalUsed.toFixed(1)} GB used`);
+        } else {
+          callback(null, '0 GB used');
+        }
+      } catch (parseError) {
+        console.error('Error parsing RBD du output:', parseError);
+        callback(null, 'Parse error');
+      }
+    });
+  } else {
+    // For local storage, get filesystem usage
+    exec(`df -BG "${storage.path}" | tail -1`, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Error getting local storage usage:', error);
+        return callback(null, 'Error');
+      }
+      
+      try {
+        const parts = stdout.trim().split(/\s+/);
+        if (parts.length >= 5) {
+          const total = parts[1].replace('G', '');
+          const used = parts[2].replace('G', '');
+          const available = parts[3].replace('G', '');
+          const usePercent = parts[4];
+          
+          callback(null, `${used}/${total} GB (${usePercent})`);
+        } else {
+          callback(null, 'N/A');
+        }
+      } catch (parseError) {
+        console.error('Error parsing df output:', parseError);
+        callback(null, 'Parse error');
+      }
+    });
+  }
+}
+
 app.get('/api/storages', requireAuth, (req, res) => {
-  res.json(storages);
+  // Add capacity information to each storage
+  const storagesWithCapacity = storages.map(storage => ({ ...storage }));
+  
+  // Get capacity for all storages asynchronously
+  const capacityPromises = storagesWithCapacity.map(storage => {
+    return new Promise((resolve) => {
+      getStorageCapacity(storage, (error, capacity) => {
+        storage.capacity = capacity || 'Loading...';
+        resolve();
+      });
+    });
+  });
+  
+  Promise.all(capacityPromises).then(() => {
+    res.json(storagesWithCapacity);
+  }).catch(error => {
+    console.error('Error getting storage capacities:', error);
+    res.json(storagesWithCapacity); // Return with whatever capacity info we have
+  });
 });
 
 app.post('/api/storages', requireAuth, (req, res) => {
