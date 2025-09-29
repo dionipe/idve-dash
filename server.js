@@ -1919,11 +1919,39 @@ app.delete('/api/networks/:name', requireAuth, (req, res) => {
 let networks = [];
 
 // API routes for storages
-let storages = [
+const STORAGE_FILE = path.join(__dirname, 'storages.json');
+
+// Default storages (fallback if file doesn't exist)
+const DEFAULT_STORAGES = [
   { name: 'Local', type: 'Local', content: 'ISO Images', path: '/var/lib/idve/isos', shared: 'No', enabled: true },
   { name: 'Local', type: 'Local', content: 'Template', path: '/var/lib/idve/images', shared: 'No', enabled: true },
   { name: 'Local', type: 'Local', content: 'Disk images', path: '/var/lib/idve/instances', shared: 'No', enabled: true }
 ];
+
+// Load storages from file or use defaults
+function loadStorages() {
+  try {
+    if (fs.existsSync(STORAGE_FILE)) {
+      const data = fs.readFileSync(STORAGE_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error loading storages:', error);
+  }
+  return DEFAULT_STORAGES.slice(); // Return copy of defaults
+}
+
+// Save storages to file
+function saveStorages(storages) {
+  try {
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(storages, null, 2));
+  } catch (error) {
+    console.error('Error saving storages:', error);
+  }
+}
+
+// Initialize storages
+let storages = loadStorages();
 
 // Helper function to get storage capacity and usage
 function getStorageCapacity(storage, callback) {
@@ -2063,6 +2091,7 @@ app.post('/api/storages', requireAuth, (req, res) => {
       
       console.log('RBD connection successful, available images:', stdout);
       storages.push(newStorage);
+      saveStorages(storages); // Save to persistent storage
       res.json({ message: 'RBD storage created and connected successfully' });
     });
   } else {
@@ -2080,13 +2109,39 @@ app.post('/api/storages', requireAuth, (req, res) => {
       enabled: true
     };
     storages.push(newStorage);
+    saveStorages(storages); // Save to persistent storage
     res.json({ message: 'Storage created' });
   }
+});
+
+app.put('/api/storages/:name', requireAuth, (req, res) => {
+  const name = req.params.name;
+  const { type, content, path, monitors, pool, username, key, shared, enabled } = req.body;
+  
+  const storageIndex = storages.findIndex(stor => stor.name === name);
+  if (storageIndex === -1) {
+    return res.status(404).json({ error: 'Storage not found' });
+  }
+  
+  // Update storage properties
+  if (type) storages[storageIndex].type = type;
+  if (content) storages[storageIndex].content = content;
+  if (path) storages[storageIndex].path = path;
+  if (monitors) storages[storageIndex].monitors = monitors;
+  if (pool) storages[storageIndex].pool = pool;
+  if (username) storages[storageIndex].username = username;
+  if (key) storages[storageIndex].key = key;
+  if (shared !== undefined) storages[storageIndex].shared = shared;
+  if (enabled !== undefined) storages[storageIndex].enabled = enabled;
+  
+  saveStorages(storages); // Save to persistent storage
+  res.json({ message: 'Storage updated successfully' });
 });
 
 app.delete('/api/storages/:name', requireAuth, (req, res) => {
   const name = req.params.name;
   storages = storages.filter(stor => stor.name !== name);
+  saveStorages(storages); // Save to persistent storage
   res.json({ message: 'Storage deleted' });
 });
 

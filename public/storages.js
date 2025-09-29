@@ -78,8 +78,31 @@ document.getElementById('create-storage-form').addEventListener('submit', functi
 });
 
 function editStorage(name) {
-  // Implement edit functionality
-  alert('Edit storage: ' + name);
+  // Find the storage to edit
+  const storage = Array.from(document.querySelectorAll('#storages-table-body tr')).find(row => {
+    return row.cells[0].textContent === name;
+  });
+  
+  if (!storage) {
+    alert('Storage not found');
+    return;
+  }
+  
+  // For now, show a simple prompt to edit the name (you can expand this to edit all fields)
+  const newName = prompt('Enter new name for storage:', name);
+  if (newName && newName !== name) {
+    fetch(`/api/storages/${name}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newName })
+    })
+    .then(response => response.json())
+    .then(data => {
+      alert('Storage updated');
+      loadStorages();
+    })
+    .catch(error => console.error('Error:', error));
+  }
 }
 
 function deleteStorage(name) {
