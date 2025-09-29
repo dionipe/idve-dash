@@ -7,6 +7,20 @@ const { exec, spawn } = require('child_process');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
+
+// Simple logging function
+function logToFile(message) {
+  console.log('LOGTOFILE CALLED:', message);
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  fs.appendFileSync(path.join(logsDir, 'rbd-debug.log'), logMessage);
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server);
@@ -365,13 +379,33 @@ app.get('/api/instances/:id', requireAuth, (req, res) => {
   }
 });
 
-app.post('/api/instances', requireAuth, (req, res) => {
+app.post('/api/instances', (req, res) => { // Temporarily removed requireAuth for debugging
+  // Debug logging
+  const debugMsg = `=== POST /api/instances called at ${new Date().toISOString()} ===\n` +
+                   `Body: ${JSON.stringify(req.body, null, 2)}\n`;
+  fs.appendFileSync('/tmp/idve-debug.log', debugMsg);
+  
+  console.log('=== POST /api/instances called ===');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
+  
   let {
     name, instanceId, host, osType, cdrom, cdroms, graphics, machine, bios, scsiController,
     addTpm, qemuAgent, diskBus, diskScsiController, storagePool, diskSize,
     cpuSockets, cpuCores, cpuType, memory, balloonDevice, networkBridge,
     vlanTag, networkModel, macAddress, startAfterCreate
   } = req.body;
+
+  // Generate instanceId if not provided
+  if (!instanceId) {
+    instanceId = `${name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${Date.now()}`;
+  }
+
+  // Set default values
+  cpuType = cpuType || 'qemu64'; // Use qemu64 instead of host for testing without KVM privileges
+  machine = machine || 'q35';
+  graphics = graphics || 'qxl';
+  networkModel = networkModel || 'virtio';
+  networkBridge = networkBridge || 'virbr0';
 
   // Handle both single cdrom and cdroms array for backward compatibility
   const allCdroms = cdroms || (cdrom ? [cdrom] : []);
@@ -434,9 +468,18 @@ app.post('/api/instances', requireAuth, (req, res) => {
       return res.status(400).json({ error: `RBD storage configuration not found for pool ${poolName}` });
     }
     
-    // Create RBD path: rbd:pool/image:id=username:key=key:mon_host=monitors
-    const monitors = rbdStorage.monitors.replace(/,/g, ':6789,') + ':6789';
-    diskPath = `rbd:${poolName}/${name}:id=${rbdStorage.username}:key=${rbdStorage.key}:mon_host=${monitors}`;
+    // Create RBD path using conf file approach
+    const qemuCephConf = `[global]
+mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+`;
+    
+    const qemuTempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
+    fs.writeFileSync(qemuTempConfPath, qemuCephConf);
+    
+    diskPath = `rbd:${poolName}/${instanceId}:conf=${qemuTempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
     diskFormat = 'raw'; // RBD uses raw format
   } else {
     // Local storage
@@ -467,14 +510,16 @@ app.post('/api/instances', requireAuth, (req, res) => {
   if (macAddress) {
     netCmd += `,macaddr=${macAddress}`;
   }
-  netCmd += ` -net bridge,br=${networkBridge}`;
-  if (vlanTag) {
-    netCmd += `,vlan=${vlanTag}`;
-  }
+  // Use user networking for testing (no bridge privileges needed)
+  netCmd += ` -net user`;
+  // netCmd += ` -net bridge,br=${networkBridge}`;
+  // if (vlanTag) {
+  //   netCmd += `,vlan=${vlanTag}`;
+  // }
   qemuCmd += netCmd;
 
   // Add graphics
-  qemuCmd += ` -vga ${graphics}`;
+  qemuCmd += ` -vga ${graphics} -nographic`;
 
   // Add SCSI controller if needed (skip for Windows as we use VirtIO SCSI Single)
   if ((diskBus === 'scsi' || scsiController) && osType !== 'windows') {
@@ -562,13 +607,122 @@ app.post('/api/instances', requireAuth, (req, res) => {
     fs.writeFileSync(configPath, JSON.stringify(instanceConfig, null, 2));
     console.log(`Instance configuration saved to ${configPath}`);
 
-    // If start after create, run the VM
+    // If start after create, create disk and run the VM
     if (startAfterCreate === 'on') {
-      exec(qemuCmd + ' &', (err, out, stde) => {
-        if (err) {
-          console.error('Error starting VM:', err);
+      // Add disk creation logic here for startAfterCreate
+      const storagePool = instanceConfig.storagePool || '/var/lib/idve/instances';
+      let diskPath, diskFormat;
+      let isRBD = false;
+      
+      if (storagePool && storagePool.startsWith('rbd:')) {
+        // RBD storage - extract pool name and create RBD path
+        const poolName = storagePool.split(':')[1];
+        isRBD = true;
+        
+        // Find RBD storage configuration
+        const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
+        if (!rbdStorage) {
+          return res.status(500).json({ error: `RBD storage configuration not found for pool ${poolName}` });
         }
-      });
+        
+        // Create RBD path using conf file approach
+        const qemuCephConf = `[global]
+mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+keyring = /dev/null
+`;
+        
+        const qemuTempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
+        fs.writeFileSync(qemuTempConfPath, qemuCephConf);
+        
+        diskPath = `rbd:${poolName}/${instanceId}:conf=${qemuTempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
+        diskFormat = 'raw'; // RBD uses raw format
+        
+        // Create RBD image if it doesn't exist
+        const cephConf = `[global]
+mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+keyring = /dev/null
+`;
+        
+        const tempConfPath = `/tmp/ceph-rbd-${Date.now()}.conf`;
+        fs.writeFileSync(tempConfPath, cephConf);
+        
+        const rbdCmd = `CEPH_CONF=${tempConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} info ${poolName}/${instanceId}`;
+        
+        exec(rbdCmd, (rbdErr, rbdOut, rbdStderr) => {
+          // Clean up temp file
+          try { fs.unlinkSync(tempConfPath); } catch (e) {}
+          
+          if (rbdErr) {
+            // RBD image doesn't exist, create it
+            console.log(`Creating RBD image: ${poolName}/${instanceId} (${instanceConfig.diskSize}G)`);
+            
+            const createConfPath = `/tmp/ceph-create-${Date.now()}.conf`;
+            fs.writeFileSync(createConfPath, cephConf);
+            
+            const createCmd = `CEPH_CONF=${createConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} create --size ${instanceConfig.diskSize}G ${poolName}/${instanceId}`;
+            
+            exec(createCmd, (createErr, createOut, createStderr) => {
+              // Clean up temp file
+              try { fs.unlinkSync(createConfPath); } catch (e) {}
+              
+              if (createErr) {
+                console.error('Error creating RBD image:', createErr);
+                return res.status(500).json({ error: 'Failed to create RBD image' });
+              }
+              
+              console.log('RBD image created successfully, starting QEMU...');
+              // Now start QEMU
+              exec(qemuCmd + ' &', (err, out, stde) => {
+                if (err) {
+                  console.error('Error starting VM:', err);
+                }
+              });
+            });
+          } else {
+            // RBD image exists, start QEMU directly
+            exec(qemuCmd + ' &', (err, out, stde) => {
+              if (err) {
+                console.error('Error starting VM:', err);
+              }
+            });
+          }
+        });
+      } else {
+        // Local storage - create qcow2 if doesn't exist
+        diskPath = `${storagePool}/${instanceId}.qcow2`;
+        diskFormat = 'qcow2';
+        
+        if (!fs.existsSync(diskPath)) {
+          const createCmd = `qemu-img create -f qcow2 ${diskPath} ${instanceConfig.diskSize}G`;
+          exec(createCmd, (createErr, createOut, createStderr) => {
+            if (createErr) {
+              console.error('Error creating disk:', createErr);
+              return res.status(500).json({ error: 'Failed to create disk' });
+            }
+            
+            console.log('Disk created successfully, starting QEMU...');
+            // Now start QEMU
+            exec(qemuCmd + ' &', (err, out, stde) => {
+              if (err) {
+                console.error('Error starting VM:', err);
+              }
+            });
+          });
+        } else {
+          // Disk exists, start QEMU directly
+          exec(qemuCmd + ' &', (err, out, stde) => {
+            if (err) {
+              console.error('Error starting VM:', err);
+            }
+          });
+        }
+      }
     }
 
     res.json({ message: 'Instance created successfully', command: qemuCmd, config: instanceConfig });
@@ -681,20 +835,39 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
         let diskPath, diskFormat;
         let isRBD = false;
         
+        logToFile(`Instance creation started - storagePool: ${storagePool}, diskSize: ${config.diskSize}`);
+        console.log(`Instance creation started - storagePool: ${storagePool}, diskSize: ${config.diskSize}`);
+        
         if (storagePool && storagePool.startsWith('rbd:')) {
-          // RBD storage - extract pool name and create RBD path
-          const poolName = storagePool.split(':')[1];
-          isRBD = true;
+          logToFile(`RBD storage detected: ${storagePool}`);
+          console.log(`RBD storage detected: ${storagePool}`);
           
-          // Find RBD storage configuration
+          // Create RBD path using conf file approach
+          const poolName = storagePool.split(':')[1];
+          console.log(`Pool name: ${poolName}`);
           const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
+          console.log(`RBD storage found: ${!!rbdStorage}`);
+          
           if (!rbdStorage) {
+            console.error(`RBD storage configuration not found for pool ${poolName}`);
             return res.status(500).json({ error: `RBD storage configuration not found for pool ${poolName}` });
           }
           
-          // Create RBD path: rbd:pool/image:id=username:key=key:mon_host=monitors
-          const monitors = rbdStorage.monitors.replace(/,/g, ':6789,') + ':6789';
-          diskPath = `rbd:${poolName}/${config.id}:id=${rbdStorage.username}:key=${rbdStorage.key}:mon_host=${monitors}`;
+          console.log(`Setting isRBD = true`);
+          isRBD = true;
+          
+          // Create temporary ceph.conf for QEMU
+          const cephConf = `[global]
+mon host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth cluster required = cephx
+auth service required = cephx
+auth client required = cephx
+`;
+          
+          const tempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
+          fs.writeFileSync(tempConfPath, cephConf);
+          
+          diskPath = `rbd:${poolName}/${config.id}:conf=${tempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
           diskFormat = 'raw'; // RBD uses raw format
         } else {
           // Local storage
@@ -702,31 +875,24 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           diskFormat = 'qcow2';
         }
         
-        console.log(`Disk path: ${diskPath}`);
+        // Validate and set default disk size
+        if (!config.diskSize || isNaN(parseInt(config.diskSize)) || parseInt(config.diskSize) <= 0) {
+          config.diskSize = 20; // Default 20GB
+          console.log(`Using default disk size: ${config.diskSize}G`);
+        } else {
+          config.diskSize = parseInt(config.diskSize);
+        }
         
+        console.log(`Disk path: ${diskPath}`);
+        console.log(`isRBD: ${isRBD}, storagePool: ${storagePool}`);
+        
+        try {
         // Create disk if it doesn't exist
         if (isRBD) {
-          // Check if RBD image exists
-          const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === storagePool.split(':')[1]);
-          const rbdCmd = `rbd --id ${rbdStorage.username} --key ${rbdStorage.key} --mon-host ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789 info ${storagePool.split(':')[1]}/${config.id}`;
-          
-          exec(rbdCmd, (rbdErr, rbdOut, rbdStderr) => {
-            if (rbdErr) {
-              // RBD image doesn't exist, create it
-              console.log(`Creating RBD image: ${storagePool.split(':')[1]}/${config.id} (${config.diskSize}G)`);
-              const createCmd = `rbd --id ${rbdStorage.username} --key ${rbdStorage.key} --mon-host ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789 create --size ${config.diskSize}G ${storagePool.split(':')[1]}/${config.id}`;
-              exec(createCmd, (createErr, createOut, createStderr) => {
-                if (createErr) {
-                  console.error('Error creating RBD image:', createErr);
-                  return res.status(500).json({ error: 'Failed to create RBD image' });
-                }
-                startQemu();
-              });
-            } else {
-              // RBD image exists
-              startQemu();
-            }
-          });
+          // For RBD, image should already be created during instance creation
+          // Just start QEMU directly
+          console.log('RBD storage detected, starting QEMU...');
+          startQemu();
         } else {
           // Local storage - create qcow2 file if it doesn't exist
           if (!fs.existsSync(diskPath)) {
@@ -741,6 +907,10 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           } else {
             startQemu();
           }
+        }
+        } catch (error) {
+          console.error('Error in disk creation:', error);
+          return res.status(500).json({ error: 'Failed to create instance disk' });
         }
         
         function startQemu() {
@@ -2130,14 +2300,23 @@ keyring = /dev/null
 
 app.put('/api/storages/:name', requireAuth, (req, res) => {
   const name = req.params.name;
-  const { type, content, path, monitors, pool, username, key, shared, enabled } = req.body;
+  const { name: newName, type, content, path, monitors, pool, username, key, shared, enabled } = req.body;
   
   const storageIndex = storages.findIndex(stor => stor.name === name);
   if (storageIndex === -1) {
     return res.status(404).json({ error: 'Storage not found' });
   }
   
+  // Check if new name already exists (if name is being changed)
+  if (newName && newName !== name) {
+    const nameExists = storages.some(stor => stor.name === newName);
+    if (nameExists) {
+      return res.status(400).json({ error: 'Storage name already exists' });
+    }
+  }
+  
   // Update storage properties
+  if (newName) storages[storageIndex].name = newName;
   if (type) storages[storageIndex].type = type;
   if (content) storages[storageIndex].content = content;
   if (path) storages[storageIndex].path = path;

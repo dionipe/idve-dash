@@ -1,5 +1,7 @@
 const socket = io();
 
+let currentEditingStorage = null;
+
 function loadStorages() {
   fetch('/api/storages')
   .then(response => response.json())
@@ -30,6 +32,9 @@ function loadStorages() {
 }
 
 function showCreateStorageModal() {
+  currentEditingStorage = null;
+  document.getElementById('modal-title').textContent = 'Create Storage';
+  document.getElementById('modal-submit-btn').textContent = 'Create';
   document.getElementById('storage-modal').classList.remove('hidden');
   document.getElementById('storage-modal').classList.add('flex');
   // Reset form
@@ -43,6 +48,7 @@ function showCreateStorageModal() {
 function closeStorageModal() {
   document.getElementById('storage-modal').classList.add('hidden');
   document.getElementById('storage-modal').classList.remove('flex');
+  currentEditingStorage = null;
 }
 
 // Handle storage type change to show/hide RBD fields
@@ -63,14 +69,18 @@ document.getElementById('create-storage-form').addEventListener('submit', functi
   e.preventDefault();
   const formData = new FormData(this);
   const data = Object.fromEntries(formData);
-  fetch('/api/storages', {
-    method: 'POST',
+  
+  const url = currentEditingStorage ? `/api/storages/${currentEditingStorage.name}` : '/api/storages';
+  const method = currentEditingStorage ? 'PUT' : 'POST';
+  
+  fetch(url, {
+    method: method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
   })
   .then(response => response.json())
   .then(data => {
-    alert('Storage created');
+    alert(currentEditingStorage ? 'Storage updated' : 'Storage created');
     closeStorageModal();
     loadStorages();
   })
@@ -78,31 +88,42 @@ document.getElementById('create-storage-form').addEventListener('submit', functi
 });
 
 function editStorage(name) {
-  // Find the storage to edit
-  const storage = Array.from(document.querySelectorAll('#storages-table-body tr')).find(row => {
-    return row.cells[0].textContent === name;
-  });
-  
-  if (!storage) {
-    alert('Storage not found');
-    return;
-  }
-  
-  // For now, show a simple prompt to edit the name (you can expand this to edit all fields)
-  const newName = prompt('Enter new name for storage:', name);
-  if (newName && newName !== name) {
-    fetch(`/api/storages/${name}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName })
-    })
-    .then(response => response.json())
-    .then(data => {
-      alert('Storage updated');
-      loadStorages();
-    })
-    .catch(error => console.error('Error:', error));
-  }
+  // Fetch current storage data
+  fetch('/api/storages')
+  .then(response => response.json())
+  .then(data => {
+    const storage = data.find(s => s.name === name);
+    if (!storage) {
+      alert('Storage not found');
+      return;
+    }
+    
+    currentEditingStorage = storage;
+    document.getElementById('modal-title').textContent = 'Edit Storage';
+    document.getElementById('modal-submit-btn').textContent = 'Update';
+    document.getElementById('storage-modal').classList.remove('hidden');
+    document.getElementById('storage-modal').classList.add('flex');
+    
+    // Populate form with existing data
+    document.getElementById('storage-name').value = storage.name;
+    document.getElementById('storage-type').value = storage.type;
+    document.getElementById('storage-content').value = storage.content;
+    document.getElementById('storage-path').value = storage.path || '';
+    
+    // Handle RBD fields
+    if (storage.type === 'RBD') {
+      document.getElementById('rbd-fields').classList.remove('hidden');
+      document.getElementById('storage-path').required = false;
+      document.getElementById('storage-monitors').value = storage.monitors || '';
+      document.getElementById('storage-pool').value = storage.pool || '';
+      document.getElementById('storage-username').value = storage.username || '';
+      document.getElementById('storage-key').value = storage.key || '';
+    } else {
+      document.getElementById('rbd-fields').classList.add('hidden');
+      document.getElementById('storage-path').required = true;
+    }
+  })
+  .catch(error => console.error('Error:', error));
 }
 
 function deleteStorage(name) {
