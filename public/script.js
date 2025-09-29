@@ -1,5 +1,104 @@
 const socket = io();
 
+// Mobile menu functions
+function toggleMobileMenu() {
+  const overlay = document.getElementById('mobile-menu-overlay');
+  const menu = document.getElementById('mobile-menu');
+  const button = document.getElementById('mobile-menu-button');
+  const isOpen = !overlay.classList.contains('invisible');
+
+  if (isOpen) {
+    closeMobileMenu();
+  } else {
+    openMobileMenu();
+  }
+}
+
+function openMobileMenu() {
+  const overlay = document.getElementById('mobile-menu-overlay');
+  const menu = document.getElementById('mobile-menu');
+  const button = document.getElementById('mobile-menu-button');
+
+  overlay.classList.remove('invisible', 'opacity-0');
+  overlay.classList.add('opacity-100', 'visible');
+  menu.classList.remove('-translate-x-full');
+  menu.classList.add('translate-x-0');
+
+  // Change menu icon to close
+  button.innerHTML = '<span class="material-symbols-outlined text-xl">close</span>';
+
+  // Prevent body scroll
+  document.body.style.overflow = 'hidden';
+  document.body.classList.add('menu-open');
+}
+
+function closeMobileMenu() {
+  const overlay = document.getElementById('mobile-menu-overlay');
+  const menu = document.getElementById('mobile-menu');
+  const button = document.getElementById('mobile-menu-button');
+
+  overlay.classList.remove('opacity-100', 'visible');
+  overlay.classList.add('opacity-0');
+  menu.classList.remove('translate-x-0');
+  menu.classList.add('-translate-x-full');
+
+  // Change close icon back to menu
+  button.innerHTML = '<span class="material-symbols-outlined text-xl">menu</span>';
+
+  // Restore body scroll
+  document.body.style.overflow = '';
+  document.body.classList.remove('menu-open');
+
+  // Hide overlay after animation
+  setTimeout(() => {
+    overlay.classList.add('invisible');
+  }, 300);
+}
+
+// Bottom Navigation Functions
+function setActiveNav(navId) {
+  // Remove active class from all nav items
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+  });
+
+  // Add active class to clicked nav item
+  const activeItem = document.querySelector(`.nav-item[data-nav="${navId}"]`);
+  if (activeItem) {
+    activeItem.classList.add('active');
+  }
+}
+
+// FAB Menu Functions
+function toggleFabMenu() {
+  const body = document.body;
+  const isOpen = body.classList.contains('fab-menu-open');
+
+  if (isOpen) {
+    closeFabMenu();
+  } else {
+    openFabMenu();
+  }
+}
+
+function openFabMenu() {
+  document.body.classList.add('fab-menu-open');
+}
+
+function closeFabMenu() {
+  document.body.classList.remove('fab-menu-open');
+}
+
+// Close FAB menu when clicking outside
+document.addEventListener('click', function(event) {
+  const fabButton = document.getElementById('fab-button');
+  const fabMenu = document.getElementById('fab-menu');
+
+  if (!fabButton.contains(event.target) && !fabMenu.contains(event.target)) {
+    closeFabMenu();
+  }
+});
+
 // Authentication functions
 async function checkAuthStatus() {
   try {
@@ -89,6 +188,21 @@ document.addEventListener('DOMContentLoaded', async function() {
   if (loginForm) {
     loginForm.addEventListener('submit', handleLogin);
   }
+
+  // Setup mobile menu
+  const mobileMenuButton = document.getElementById('mobile-menu-button');
+  if (mobileMenuButton) {
+    mobileMenuButton.addEventListener('click', toggleMobileMenu);
+  }
+
+  // Setup FAB button
+  const fabButton = document.getElementById('fab-button');
+  if (fabButton) {
+    fabButton.addEventListener('click', toggleFabMenu);
+  }
+
+  // Set initial active nav for dashboard
+  setActiveNav('dashboard');
 });
 
 function initializeDashboard() {
@@ -108,7 +222,7 @@ function showSection(sectionId) {
     section.classList.remove('active');
   });
   document.getElementById(sectionId).classList.add('active');
-  
+
   // Update navigation active state
   document.querySelectorAll('nav a').forEach(link => {
     link.classList.remove('text-primary', 'font-semibold');
@@ -119,9 +233,13 @@ function showSection(sectionId) {
     activeLink.classList.add('text-primary', 'font-semibold');
     activeLink.classList.remove('text-slate-700', 'dark:text-slate-300');
   }
-}
 
-function showCreateInstanceModal() {
+  // Update bottom navigation active state
+  setActiveNav(sectionId);
+
+  // Close mobile menu if open
+  closeMobileMenu();
+}function showCreateInstanceModal() {
   document.getElementById('modal').classList.remove('hidden');
   document.getElementById('modal').classList.add('flex');
   currentStep = 0;

@@ -1032,6 +1032,7 @@ auth client required = cephx
             }
             
             // Add USB support and tablet for better mouse handling
+            // qemuCmd += ` -usb`;
             qemuCmd += ` -usb -device usb-tablet`;
             
             // Boot order - using bootindex on devices for UEFI systems

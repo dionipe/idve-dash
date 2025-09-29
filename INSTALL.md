@@ -442,3 +442,6 @@ For issues and questions:
 - Updated installation guide to remove libvirt dependencies
 - Added websockify installation for VNC proxy</content>
 <parameter name="filePath">/opt/idve-dash/INSTALL.md
+
+## Dependencies
+- genisoimage, swtpm, websockify

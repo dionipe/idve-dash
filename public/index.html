@@ -44,6 +44,116 @@
     .dark .clay-shadow-inset {
       box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.5);
     }
+
+    /* Mobile Bottom Navigation Styles */
+    #mobile-bottom-nav {
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .safe-area-pb {
+      padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    }
+
+    /* Active nav item styles */
+    .nav-item.active .material-symbols-outlined {
+      color: #137fec;
+      transform: scale(1.1);
+    }
+
+    .nav-item.active span:last-child {
+      color: #137fec;
+      font-weight: 600;
+    }
+
+    .nav-item.active {
+      background-color: rgba(19, 127, 236, 0.1);
+    }
+
+    /* FAB Animation */
+    #fab-button {
+      box-shadow: 0 4px 20px rgba(19, 127, 236, 0.3);
+    }
+
+    #fab-button:hover {
+      box-shadow: 0 6px 25px rgba(19, 127, 236, 0.4);
+    }
+
+    #fab-button:active {
+      transform: scale(0.95);
+    }
+
+    /* FAB Menu Animation */
+    #fab-menu {
+      transform-origin: bottom center;
+    }
+
+    .fab-menu-open #fab-menu {
+      opacity: 1;
+      transform: translateX(-50%) scale(1);
+      pointer-events: auto;
+    }
+
+    .fab-menu-open #fab-icon {
+      transform: rotate(45deg);
+    }
+
+    /* Staggered animation for FAB menu items */
+    .fab-menu-open #fab-menu button {
+      animation: fabItemSlideUp 0.3s ease-out forwards;
+    }
+
+    .fab-menu-open #fab-menu button:nth-child(1) { animation-delay: 0.1s; }
+    .fab-menu-open #fab-menu button:nth-child(2) { animation-delay: 0.15s; }
+    .fab-menu-open #fab-menu button:nth-child(3) { animation-delay: 0.2s; }
+
+    @keyframes fabItemSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Icon hover effects */
+    .nav-item .material-symbols-outlined {
+      position: relative;
+      z-index: 1;
+    }
+
+    .nav-item:hover .material-symbols-outlined {
+      color: #137fec;
+    }
+
+    .nav-item:hover span:last-child {
+      color: #137fec;
+    }
+
+    /* Ripple effect for nav items */
+    .nav-item {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .nav-item::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(19, 127, 236, 0.2);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.3s ease-out, height 0.3s ease-out;
+    }
+
+    .nav-item:active::before {
+      width: 120px;
+      height: 120px;
+    }
   </style>
 </head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200">
@@ -67,6 +177,10 @@
           <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"> search </span>
           <input class="w-48 rounded-full border-transparent bg-slate-100 dark:bg-slate-800/50 py-2 pl-10 pr-4 text-sm focus:border-primary focus:ring-primary" placeholder="Search..." type="text"/>
         </div>
+        <!-- Mobile menu button -->
+        <button id="mobile-menu-button" class="md:hidden relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300 transition-colors duration-200">
+          <span class="material-symbols-outlined text-xl">menu</span>
+        </button>
         <button class="relative rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-300">
           <span class="material-symbols-outlined"> notifications </span>
           <span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary"></span>
@@ -77,7 +191,69 @@
         </button>
       </div>
     </header>
-    <main class="flex-1 overflow-y-auto p-6 lg:p-8">
+
+    <!-- Mobile Bottom Navigation -->
+    <nav id="mobile-bottom-nav" class="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-lg border-t border-slate-200/20 dark:border-slate-700/20 safe-area-pb">
+      <div class="flex items-center justify-around px-2 py-2">
+        <button onclick="showSection('dashboard'); setActiveNav('dashboard')" class="nav-item flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 ease-out min-w-[60px] group" data-nav="dashboard">
+          <div class="relative mb-1">
+            <span class="material-symbols-outlined text-xl transition-all duration-300 group-hover:scale-110">dashboard</span>
+            <div class="absolute inset-0 bg-primary/20 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300"></div>
+          </div>
+          <span class="text-xs font-medium transition-colors duration-300">Dashboard</span>
+        </button>
+        
+        <button onclick="window.location.href='/instances'; setActiveNav('instances')" class="nav-item flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 ease-out min-w-[60px] group" data-nav="instances">
+          <div class="relative mb-1">
+            <span class="material-symbols-outlined text-xl transition-all duration-300 group-hover:scale-110">dns</span>
+            <div class="absolute inset-0 bg-primary/20 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300"></div>
+          </div>
+          <span class="text-xs font-medium transition-colors duration-300">Instances</span>
+        </button>
+        
+        <!-- Central FAB -->
+        <div class="relative">
+          <button id="fab-button" class="flex items-center justify-center w-14 h-14 bg-primary rounded-full shadow-lg hover:shadow-xl transition-all duration-300 ease-out hover:scale-105 active:scale-95">
+            <span class="material-symbols-outlined text-white text-2xl transition-transform duration-300" id="fab-icon">add</span>
+          </button>
+          
+          <!-- FAB Menu Options -->
+          <div id="fab-menu" class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-4 opacity-0 scale-0 transition-all duration-300 ease-out pointer-events-none">
+            <div class="flex flex-col gap-2">
+              <button onclick="showCreateInstanceModal(); closeFabMenu()" class="flex items-center gap-3 bg-background-light dark:bg-background-dark rounded-lg px-4 py-3 shadow-lg border border-slate-200/20 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors duration-200">
+                <span class="material-symbols-outlined text-primary">add_circle</span>
+                <span class="text-sm font-medium">New Instance</span>
+              </button>
+              <button onclick="window.location.href='/images'" class="flex items-center gap-3 bg-background-light dark:bg-background-dark rounded-lg px-4 py-3 shadow-lg border border-slate-200/20 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors duration-200">
+                <span class="material-symbols-outlined text-green-500">image</span>
+                <span class="text-sm font-medium">Images</span>
+              </button>
+              <button onclick="window.location.href='/storages'" class="flex items-center gap-3 bg-background-light dark:bg-background-dark rounded-lg px-4 py-3 shadow-lg border border-slate-200/20 dark:border-slate-700/20 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors duration-200">
+                <span class="material-symbols-outlined text-blue-500">storage</span>
+                <span class="text-sm font-medium">Storage</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <button onclick="window.location.href='/networks'; setActiveNav('networks')" class="nav-item flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 ease-out min-w-[60px] group" data-nav="networks">
+          <div class="relative mb-1">
+            <span class="material-symbols-outlined text-xl transition-all duration-300 group-hover:scale-110">router</span>
+            <div class="absolute inset-0 bg-primary/20 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300"></div>
+          </div>
+          <span class="text-xs font-medium transition-colors duration-300">Networks</span>
+        </button>
+        
+        <button onclick="window.location.href='/storages'; setActiveNav('storages')" class="nav-item flex flex-col items-center justify-center p-2 rounded-xl transition-all duration-300 ease-out min-w-[60px] group" data-nav="storages">
+          <div class="relative mb-1">
+            <span class="material-symbols-outlined text-xl transition-all duration-300 group-hover:scale-110">storage</span>
+            <div class="absolute inset-0 bg-primary/20 rounded-full scale-0 group-hover:scale-100 transition-transform duration-300"></div>
+          </div>
+          <span class="text-xs font-medium transition-colors duration-300">Storage</span>
+        </button>
+      </div>
+    </nav>
+    <main class="flex-1 overflow-y-auto p-6 lg:p-8 pb-20 md:pb-6">
       <div class="mx-auto max-w-7xl">
         <section id="dashboard" class="section active">
           <div class="mb-6 flex items-center justify-between">
