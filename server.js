@@ -552,10 +552,10 @@ auth_client_required = cephx
     qemuCmd += ` -device tpm-tis,tpmdev=tpmdev`;
   }
 
-  // Add QEMU agent
-  if (qemuAgent) {
-    qemuCmd += ` -device virtio-serial -chardev socket,path=/var/lib/libvirt/qemu/${name}.agent,server,nowait,id=${name}_agent -device virtserialport,chardev=${name}_agent,name=org.qemu.guest_agent.0`;
-  }
+  // QEMU guest agent is disabled
+  // if (qemuAgent) {
+  //   qemuCmd += ` -device virtio-serial -chardev socket,path=/var/lib/libvirt/qemu/${name}.agent,server,nowait,id=${name}_agent -device virtserialport,chardev=${name}_agent,name=org.qemu.guest_agent.0`;
+  // }
 
   // Add balloon device
   if (balloonDevice) {
@@ -1022,14 +1022,14 @@ keyring = /dev/null
           const vncDisplay = vncPort - 5900; // Convert port to VNC display number
           qemuCmd += ` -vnc :${vncDisplay} -k en-us`;
           
-          // Add QEMU agent
-          if (config.qemuAgent) {
-            // Ensure agent socket directory exists
-            const agentSocketDir = `/var/lib/libvirt/qemu/domain-${config.id}`;
-            exec(`mkdir -p ${agentSocketDir}`, () => {
-              qemuCmd += ` -device virtio-serial-pci -chardev socket,path=${agentSocketDir}/agent.sock,server=on,wait=off,id=agent_${config.id} -device virtserialport,chardev=agent_${config.id},name=org.qemu.guest_agent.0`;
-            });
-          }
+          // QEMU guest agent is disabled
+          // if (config.qemuAgent) {
+          //   // Ensure agent socket directory exists
+          //   const agentSocketDir = `/var/lib/libvirt/qemu/domain-${config.id}`;
+          //   exec(`mkdir -p ${agentSocketDir}`, () => {
+          //     qemuCmd += ` -device virtio-serial-pci -chardev socket,path=${agentSocketDir}/agent.sock,server=on,wait=off,id=agent_${config.id} -device virtserialport,chardev=agent_${config.id},name=org.qemu.guest_agent.0`;
+          //   });
+          // }
           
           // Add balloon device
           if (config.balloonDevice) {
@@ -1307,6 +1307,8 @@ app.delete('/api/instances/:id', requireAuth, (req, res) => {
 });
 
 // Helper function to get IP address from running instance using qemu-guest-agent
+// DISABLED: QEMU guest agent IP detection is disabled
+/*
 function getInstanceIPAddress(instanceId, config, callback) {
   const instanceName = config.name;
   const macAddress = config.macAddress;
@@ -1366,6 +1368,7 @@ function getInstanceIPAddress(instanceId, config, callback) {
     tryDHCPMethods(instanceId, config, callback);
   }
 }
+*/
 
 // Try to get IP address using DHCP-related methods (ARP table, DHCP leases, etc.)
 function tryDHCPMethods(instanceId, config, callback) {
@@ -1420,24 +1423,14 @@ app.get('/api/instances/:id/status', (req, res) => {
     exec(`ps aux | grep 'qemu-system-x86_64.*-name ${instanceName}' | grep -v grep`, (error, stdout, stderr) => {
       const isRunning = stdout.trim() !== '';
       
-      // If instance is running and has qemu-guest-agent, try to get IP address
-      if (isRunning && config.qemuAgent) {
-        getInstanceIPAddress(instanceId, config, (ipError, ipAddress) => {
-          res.json({ 
-            instanceId: instanceId,
-            isRunning: isRunning,
-            status: isRunning ? 'running' : 'stopped',
-            ipAddress: ipAddress || null
-          });
-        });
-      } else {
-        res.json({ 
-          instanceId: instanceId,
-          isRunning: isRunning,
-          status: isRunning ? 'running' : 'stopped',
-          ipAddress: null
-        });
-      }
+      // IP detection using qemu-guest-agent is disabled
+      // Always return null for IP address
+      res.json({ 
+        instanceId: instanceId,
+        isRunning: isRunning,
+        status: isRunning ? 'running' : 'stopped',
+        ipAddress: null
+      });
     });
   } catch (error) {
     console.error('Error checking instance status:', error);
@@ -2639,10 +2632,10 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     .replace(/{{sshKey}}/g, sshKey || '')
     .replace(/{{macAddress}}/g, macAddress);
 
-  // // Add password if provided
-  // if (password) {
-  //   userData = userData.replace(/'${username || 'ubuntu'}':${password}|centos:centos|debian:debian|freebsd:freebsd|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
-  // }
+  // Add password if provided
+  if (password) {
+    userData = userData.replace(/'${username || 'ubuntu'}':${password}|centos:centos|debian:debian|freebsd:freebsd|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
+  }
 
   // Add disk resize command if enabled
   if (diskResize) {
