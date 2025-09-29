@@ -127,3 +127,5 @@ temp/
 *.qcow2
 *.img
 *.iso
+# Temporary authentication files
+cookies.txt
