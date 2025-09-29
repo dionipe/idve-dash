@@ -420,15 +420,38 @@ app.post('/api/instances', requireAuth, (req, res) => {
   }
 
   // Add disk
-  const diskPath = `${storagePool}/${name}.qcow2`;
+  let diskPath, diskFormat;
+  let isRBD = false;
+  
+  if (storagePool && storagePool.startsWith('rbd:')) {
+    // RBD storage - extract pool name and create RBD path
+    const poolName = storagePool.split(':')[1];
+    isRBD = true;
+    
+    // Find RBD storage configuration
+    const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
+    if (!rbdStorage) {
+      return res.status(400).json({ error: `RBD storage configuration not found for pool ${poolName}` });
+    }
+    
+    // Create RBD path: rbd:pool/image:id=username:key=key:mon_host=monitors
+    const monitors = rbdStorage.monitors.replace(/,/g, ':6789,') + ':6789';
+    diskPath = `rbd:${poolName}/${name}:id=${rbdStorage.username}:key=${rbdStorage.key}:mon_host=${monitors}`;
+    diskFormat = 'raw'; // RBD uses raw format
+  } else {
+    // Local storage
+    diskPath = `${storagePool || '/var/lib/idve/instances'}/${name}.qcow2`;
+    diskFormat = 'qcow2';
+  }
+  
   if (osType === 'windows') {
     // Use VirtIO SCSI Single for Windows VMs (best performance per Proxmox best practices)
     qemuCmd += ` -device virtio-scsi-pci,id=scsi0`;
-    qemuCmd += ` -drive file=${diskPath},format=qcow2,if=none,id=drive0,cache=writeback,discard=on`;
+    qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=none,id=drive0,cache=writeback,discard=on`;
     qemuCmd += ` -device scsi-hd,drive=drive0,bus=scsi0.0`;
   } else {
-    // Use IDE for Linux VMs
-    qemuCmd += ` -drive file=${diskPath},format=qcow2,if=ide,index=0`;
+    // Use VirtIO for Linux VMs (better compatibility with q35 machine type)
+    qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=virtio,cache=writeback,discard=on`;
   }
 
   // Add CDROM(s) if specified
@@ -655,21 +678,69 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
       
         // Add disk
         const storagePool = config.storagePool || '/var/lib/idve/instances';
-        const diskPath = `${storagePool}/${config.id}.qcow2`;
+        let diskPath, diskFormat;
+        let isRBD = false;
+        
+        if (storagePool && storagePool.startsWith('rbd:')) {
+          // RBD storage - extract pool name and create RBD path
+          const poolName = storagePool.split(':')[1];
+          isRBD = true;
+          
+          // Find RBD storage configuration
+          const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
+          if (!rbdStorage) {
+            return res.status(500).json({ error: `RBD storage configuration not found for pool ${poolName}` });
+          }
+          
+          // Create RBD path: rbd:pool/image:id=username:key=key:mon_host=monitors
+          const monitors = rbdStorage.monitors.replace(/,/g, ':6789,') + ':6789';
+          diskPath = `rbd:${poolName}/${config.id}:id=${rbdStorage.username}:key=${rbdStorage.key}:mon_host=${monitors}`;
+          diskFormat = 'raw'; // RBD uses raw format
+        } else {
+          // Local storage
+          diskPath = `${storagePool}/${config.id}.qcow2`;
+          diskFormat = 'qcow2';
+        }
+        
         console.log(`Disk path: ${diskPath}`);
         
         // Create disk if it doesn't exist
-        if (!fs.existsSync(diskPath)) {
-          console.log(`Creating disk file: ${diskPath} (${config.diskSize}G)`);
-          exec(`qemu-img create -f qcow2 ${diskPath} ${config.diskSize}G`, (diskErr, diskOut, diskStderr) => {
-            if (diskErr) {
-              console.error('Error creating disk:', diskErr);
-              return res.status(500).json({ error: 'Failed to create instance disk' });
+        if (isRBD) {
+          // Check if RBD image exists
+          const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === storagePool.split(':')[1]);
+          const rbdCmd = `rbd --id ${rbdStorage.username} --key ${rbdStorage.key} --mon-host ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789 info ${storagePool.split(':')[1]}/${config.id}`;
+          
+          exec(rbdCmd, (rbdErr, rbdOut, rbdStderr) => {
+            if (rbdErr) {
+              // RBD image doesn't exist, create it
+              console.log(`Creating RBD image: ${storagePool.split(':')[1]}/${config.id} (${config.diskSize}G)`);
+              const createCmd = `rbd --id ${rbdStorage.username} --key ${rbdStorage.key} --mon-host ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789 create --size ${config.diskSize}G ${storagePool.split(':')[1]}/${config.id}`;
+              exec(createCmd, (createErr, createOut, createStderr) => {
+                if (createErr) {
+                  console.error('Error creating RBD image:', createErr);
+                  return res.status(500).json({ error: 'Failed to create RBD image' });
+                }
+                startQemu();
+              });
+            } else {
+              // RBD image exists
+              startQemu();
             }
-            startQemu();
           });
         } else {
-          startQemu();
+          // Local storage - create qcow2 file if it doesn't exist
+          if (!fs.existsSync(diskPath)) {
+            console.log(`Creating disk file: ${diskPath} (${config.diskSize}G)`);
+            exec(`qemu-img create -f qcow2 ${diskPath} ${config.diskSize}G`, (diskErr, diskOut, diskStderr) => {
+              if (diskErr) {
+                console.error('Error creating disk:', diskErr);
+                return res.status(500).json({ error: 'Failed to create instance disk' });
+              }
+              startQemu();
+            });
+          } else {
+            startQemu();
+          }
         }
         
         function startQemu() {
@@ -677,11 +748,11 @@ app.put('/api/instances/:id/start', requireAuth, (req, res) => {
           if (config.osType === 'windows') {
             // Use VirtIO SCSI Single for Windows VMs (best performance per Proxmox best practices)
             qemuCmd += ` -device virtio-scsi-pci,id=scsi0`;
-            qemuCmd += ` -drive file=${diskPath},format=qcow2,if=none,id=drive0,cache=writeback,discard=on`;
+            qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=none,id=drive0,cache=writeback,discard=on`;
             qemuCmd += ` -device scsi-hd,drive=drive0,bus=scsi0.0`;
           } else {
             // Use VirtIO for Linux VMs (better compatibility with q35 machine type)
-            qemuCmd += ` -drive file=${diskPath},format=qcow2,if=virtio,cache=writeback,discard=on`;
+            qemuCmd += ` -drive file=${diskPath},format=${diskFormat},if=virtio,cache=writeback,discard=on`;
           }
           
           // Add Cloud-Init drive if this is a Cloud-Init instance
@@ -1943,6 +2014,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     diskResize,
     diskSize,
     addTpm,
+    storagePool,
     // Network Configuration
     bridge,
     vlanTag,
@@ -2186,6 +2258,7 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
       osType: template.os,
       template: templateId,
       cloudInit: true,
+      storagePool: storagePool || '/var/lib/idve/instances',
       userDataPath: userDataPath,
       metaDataPath: metaDataPath,
       cloudInitIsoPath: cloudInitIsoPath,

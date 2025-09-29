@@ -968,6 +968,7 @@ function showCloudInitModal() {
   document.getElementById('cloudinit-modal').classList.add('flex');
   populateCloudInitTemplates();
   populateCloudInitBridges();
+  populateCloudInitStoragePools();
 }
 
 function closeCloudInitModal() {
@@ -1085,6 +1086,29 @@ function populateCloudInitBridges() {
   });
 }
 
+function populateCloudInitStoragePools() {
+  fetch('/api/storages', {
+    credentials: 'include'
+  })
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('cloudinit-storage-pool');
+    select.innerHTML = '<option value="">Select Storage Pool</option>';
+    data.forEach(storage => {
+      const option = document.createElement('option');
+      option.value = storage.path;
+      option.textContent = `${storage.name} (${storage.type})`;
+      select.appendChild(option);
+    });
+  })
+  .catch(error => {
+    console.error('Error loading storage pools:', error);
+    // Fallback to default local storage
+    const select = document.getElementById('cloudinit-storage-pool');
+    select.innerHTML = '<option value="/var/lib/idve/instances">Local Storage (Default)</option>';
+  });
+}
+
 function createCloudInitInstance() {
   const form = document.getElementById('cloudinit-form');
   const formData = new FormData(form);
@@ -1118,7 +1142,9 @@ function createCloudInitInstance() {
     sshKey: formData.get('sshKey'),
     networkConfig: formData.get('networkConfig') === 'on',
     diskResize: formData.get('diskResize') === 'on',
+    diskSize: formData.get('diskSize'),
     addTpm: formData.get('addTpm') === 'on',
+    storagePool: formData.get('storagePool'),
     // Network Configuration
     bridge: formData.get('bridge'),
     vlanTag: formData.get('vlanTag'),
