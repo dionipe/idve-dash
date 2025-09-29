@@ -877,9 +877,9 @@ auth_client_required = cephx
           diskFormat = 'qcow2';
         }
         
-        // Validate and set default disk size
+        // Validate and set default disk size BEFORE RBD logic
         if (!config.diskSize || isNaN(parseInt(config.diskSize)) || parseInt(config.diskSize) <= 0) {
-          config.diskSize = 20; // Default 20GB
+          config.diskSize = 10; // Default 10GB
           console.log(`Using default disk size: ${config.diskSize}G`);
         } else {
           config.diskSize = parseInt(config.diskSize);
@@ -994,6 +994,11 @@ keyring = /dev/null
               qemuCmd += ` -drive file=${cdrom},if=ide,index=${index + 1},media=cdrom`;
             }
           });
+          
+          // Set boot order - if CDROMs exist, boot from CD first, otherwise boot from disk
+          if (cdroms.length > 0) {
+            qemuCmd += ` -boot order=cd`;
+          }
           
           // Add network using bridge from config
           if (config.networkBridge) {
@@ -2951,7 +2956,7 @@ key = ${rbdStorage.key}
         cloudInitIsoPath: cloudInitIsoPath,
         diskPath: diskPath,
         diskFormat: diskFormat,
-        diskSize: diskSize || null, // Store custom disk size if specified
+        diskSize: diskSize || 20, // Default to 20GB if not specified
         isRBD: isRBD,
         rbdConfig: rbdConfig,
         cpuSockets: 1,
