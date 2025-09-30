@@ -391,7 +391,7 @@ app.post('/api/instances', (req, res) => { // Temporarily removed requireAuth fo
   let {
     name, instanceId, host, osType, cdrom, cdroms, graphics, machine, bios, scsiController,
     addTpm, qemuAgent, diskBus, diskScsiController, storagePool, diskSize,
-    cpuSockets, cpuCores, cpuType, memory, balloonDevice, networkBridge,
+    cpuSockets, cpuCores, cpuType, memory, balloonDevice, networkBridge, ipType, ipPoolId, ipAddress, gateway,
     vlanTag, networkModel, macAddress, startAfterCreate
   } = req.body;
 
@@ -437,6 +437,19 @@ app.post('/api/instances', (req, res) => { // Temporarily removed requireAuth fo
       } catch (error) {
         console.error(`Error checking MAC address in ${file}:`, error);
       }
+    }
+  }
+
+  // Validate IP configuration
+  if (ipType === 'pool' && (!ipPoolId || ipPoolId.trim() === '')) {
+    return res.status(400).json({ error: 'IP pool must be selected when IP type is set to pool' });
+  }
+  if (ipType === 'manual') {
+    if (!ipAddress || ipAddress.trim() === '') {
+      return res.status(400).json({ error: 'IP address is required when IP type is set to manual' });
+    }
+    if (!gateway || gateway.trim() === '') {
+      return res.status(400).json({ error: 'Gateway is required when IP type is set to manual' });
     }
   }
 
@@ -588,6 +601,10 @@ auth_client_required = cephx
       memory: parseInt(memory),
       balloonDevice: balloonDevice === 'on',
       networkBridge,
+      ipType: ipType || 'dhcp',
+      ipPoolId,
+      ipAddress,
+      gateway,
       vlanTag,
       networkModel,
       macAddress,
@@ -595,6 +612,23 @@ auth_client_required = cephx
       createdAt: new Date().toISOString(),
       status: 'created'
     };
+
+    // Handle IP configuration based on type
+    if (ipType === 'pool' && ipPoolId) {
+      try {
+        const assignedIP = assignIPFromPool(ipPoolId);
+        assignIPToInstance(ipPoolId, assignedIP, instanceId);
+        instanceConfig.assignedIP = assignedIP;
+        console.log(`Assigned IP ${assignedIP} from pool ${ipPoolId} to instance ${instanceId}`);
+      } catch (error) {
+        console.error('Error assigning IP from pool:', error);
+        // Continue without IP assignment - instance can still be created
+      }
+    } else if (ipType === 'manual' && ipAddress) {
+      // For manual IP, just store the provided IP address
+      instanceConfig.assignedIP = ipAddress;
+      console.log(`Using manual IP ${ipAddress} for instance ${instanceId}`);
+    }
 
     // Add TPM configuration if enabled
     if (addTpm) {
@@ -1438,6 +1472,22 @@ app.delete('/api/instances/:id', requireAuth, (req, res) => {
         const config = JSON.parse(configData);
         isCloudInit = config.cloudInit || false;
         
+        // Release IP back to pool if assigned
+        if (config.ipPoolId && config.assignedIP) {
+          try {
+            const pools = loadIPPools();
+            const poolIndex = pools.findIndex(p => p.id === config.ipPoolId);
+            if (poolIndex !== -1) {
+              releaseIPToPool(pools[poolIndex], config.assignedIP);
+              saveIPPools(pools);
+              console.log(`Released IP ${config.assignedIP} back to pool ${config.ipPoolId}`);
+            }
+          } catch (ipErr) {
+            console.error('Error releasing IP to pool:', ipErr);
+            // Don't fail the deletion if IP release fails
+          }
+        }
+        
         // Collect CloudInit file paths if they exist
         if (config.userDataPath) cloudInitFiles.push(config.userDataPath);
         if (config.metaDataPath) cloudInitFiles.push(config.metaDataPath);
@@ -1609,13 +1659,14 @@ app.get('/api/instances/:id/status', (req, res) => {
     exec(`ps aux | grep 'qemu-system-x86_64.*-name ${instanceName}' | grep -v grep`, (error, stdout, stderr) => {
       const isRunning = stdout.trim() !== '';
       
-      // IP detection using qemu-guest-agent is disabled
-      // Always return null for IP address
+      // Return assigned IP from config if available
+      const ipAddress = config.assignedIP || null;
+      
       res.json({ 
         instanceId: instanceId,
         isRunning: isRunning,
         status: isRunning ? 'running' : 'stopped',
-        ipAddress: null
+        ipAddress: ipAddress
       });
     });
   } catch (error) {
@@ -2365,6 +2416,152 @@ function saveStorages(storages) {
 // Initialize storages
 let storages = loadStorages();
 
+// API routes for IP Pools
+const IP_POOLS_FILE = path.join(__dirname, 'ip-pools.json');
+
+// Default IP pools
+const DEFAULT_IP_POOLS = [
+  {
+    id: 'default-pool',
+    name: 'Default Pool',
+    network: '192.168.1.0/24',
+    gateway: '192.168.1.1',
+    dns1: '8.8.8.8',
+    dns2: '8.8.4.4',
+    startIP: '192.168.1.100',
+    endIP: '192.168.1.200',
+    interface: 'br0',
+    availableIPs: [],
+    assignedIPs: {},
+    enabled: true,
+    createdAt: new Date().toISOString()
+  }
+];
+
+// Load IP pools from file or use defaults
+function loadIPPools() {
+  try {
+    if (fs.existsSync(IP_POOLS_FILE)) {
+      const data = fs.readFileSync(IP_POOLS_FILE, 'utf8');
+      const pools = JSON.parse(data);
+      // Generate available IPs for each pool if not present
+      pools.forEach(pool => {
+        if (!pool.availableIPs || pool.availableIPs.length === 0) {
+          pool.availableIPs = generateIPRange(pool.startIP, pool.endIP);
+        }
+      });
+      return pools;
+    }
+  } catch (error) {
+    console.error('Error loading IP pools:', error);
+  }
+  // Initialize default pool with available IPs
+  DEFAULT_IP_POOLS.forEach(pool => {
+    pool.availableIPs = generateIPRange(pool.startIP, pool.endIP);
+  });
+  return DEFAULT_IP_POOLS.slice();
+}
+
+// Save IP pools to file
+function saveIPPools(ipPools) {
+  try {
+    fs.writeFileSync(IP_POOLS_FILE, JSON.stringify(ipPools, null, 2));
+  } catch (error) {
+    console.error('Error saving IP pools:', error);
+  }
+}
+
+// Generate IP range from start to end
+function generateIPRange(startIP, endIP) {
+  const start = ipToNumber(startIP);
+  const end = ipToNumber(endIP);
+  const ips = [];
+  
+  for (let i = start; i <= end; i++) {
+    ips.push(numberToIP(i));
+  }
+  
+  return ips;
+}
+
+// Convert IP string to number
+function ipToNumber(ip) {
+  return ip.split('.').reduce((acc, octet) => (acc << 8) + parseInt(octet), 0) >>> 0;
+}
+
+// Convert number to IP string
+function numberToIP(num) {
+  return [(num >>> 24) & 255, (num >>> 16) & 255, (num >>> 8) & 255, num & 255].join('.');
+}
+
+// Assign IP from pool
+function assignIPFromPool(poolId) {
+  const pools = loadIPPools();
+  const pool = pools.find(p => p.id === poolId);
+  
+  if (!pool || !pool.enabled) {
+    throw new Error('IP pool not found or disabled');
+  }
+  
+  if (pool.availableIPs.length === 0) {
+    throw new Error('No available IPs in pool');
+  }
+  
+  const assignedIP = pool.availableIPs.shift();
+  pool.assignedIPs[assignedIP] = {
+    assignedAt: new Date().toISOString(),
+    instanceId: null // Will be set when assigned to instance
+  };
+  
+  saveIPPools(pools);
+  return assignedIP;
+}
+
+// Release IP back to pool
+function releaseIPToPool(poolId, ipAddress) {
+  const pools = loadIPPools();
+  const pool = pools.find(p => p.id === poolId);
+  
+  if (!pool) {
+    throw new Error('IP pool not found');
+  }
+  
+  // Remove from assigned IPs
+  if (pool.assignedIPs[ipAddress]) {
+    delete pool.assignedIPs[ipAddress];
+    
+    // Add back to available IPs
+    pool.availableIPs.push(ipAddress);
+    pool.availableIPs.sort((a, b) => ipToNumber(a) - ipToNumber(b));
+    
+    saveIPPools(pools);
+    return true;
+  }
+  
+  return false;
+}
+
+// Assign IP to specific instance
+function assignIPToInstance(poolId, ipAddress, instanceId) {
+  const pools = loadIPPools();
+  const pool = pools.find(p => p.id === poolId);
+  
+  if (!pool) {
+    throw new Error('IP pool not found');
+  }
+  
+  if (pool.assignedIPs[ipAddress]) {
+    pool.assignedIPs[ipAddress].instanceId = instanceId;
+    saveIPPools(pools);
+    return true;
+  }
+  
+  return false;
+}
+
+// Initialize IP pools
+let ipPools = loadIPPools();
+
 // Helper function to get storage capacity and usage
 function getStorageCapacity(storage, callback) {
   if (storage.type === 'RBD') {
@@ -2732,6 +2929,208 @@ key = ${storage.key}
   });
 });
 
+// API routes for IP Pools
+app.get('/api/ip-pools', requireAuth, (req, res) => {
+  try {
+    const pools = loadIPPools();
+    res.json(pools);
+  } catch (error) {
+    console.error('Error loading IP pools:', error);
+    res.status(500).json({ error: 'Failed to load IP pools' });
+  }
+});
+
+app.post('/api/ip-pools', requireAuth, (req, res) => {
+  try {
+    const { name, network, gateway, dns1, dns2, startIP, endIP, interface } = req.body;
+    
+    if (!name || !network || !gateway || !startIP || !endIP) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const pools = loadIPPools();
+    
+    // Check if pool name already exists
+    if (pools.some(p => p.name === name)) {
+      return res.status(400).json({ error: 'IP pool name already exists' });
+    }
+    
+    const newPool = {
+      id: `pool-${Date.now()}`,
+      name,
+      network,
+      gateway,
+      dns1: dns1 || '8.8.8.8',
+      dns2: dns2 || '8.8.4.4',
+      startIP,
+      endIP,
+      interface: interface || '',
+      availableIPs: generateIPRange(startIP, endIP),
+      assignedIPs: {},
+      enabled: true,
+      createdAt: new Date().toISOString()
+    };
+    
+    pools.push(newPool);
+    saveIPPools(pools);
+    
+    res.json({ success: true, pool: newPool });
+  } catch (error) {
+    console.error('Error creating IP pool:', error);
+    res.status(500).json({ error: 'Failed to create IP pool' });
+  }
+});
+
+// Get single IP pool by ID
+app.get('/api/ip-pools/:id', requireAuth, (req, res) => {
+  try {
+    const poolId = req.params.id;
+    const pools = loadIPPools();
+    const pool = pools.find(p => p.id === poolId);
+    
+    if (!pool) {
+      return res.status(404).json({ error: 'IP pool not found' });
+    }
+    
+    res.json(pool);
+  } catch (error) {
+    console.error('Error getting IP pool:', error);
+    res.status(500).json({ error: 'Failed to get IP pool' });
+  }
+});
+
+app.put('/api/ip-pools/:id', requireAuth, (req, res) => {
+  try {
+    const poolId = req.params.id;
+    const updates = req.body;
+    
+    const pools = loadIPPools();
+    const poolIndex = pools.findIndex(p => p.id === poolId);
+    
+    if (poolIndex === -1) {
+      return res.status(404).json({ error: 'IP pool not found' });
+    }
+    
+    // Update pool properties
+    const pool = pools[poolIndex];
+    Object.assign(pool, updates);
+    
+    // Regenerate available IPs if IP range changed
+    if (updates.startIP || updates.endIP) {
+      const newStartIP = updates.startIP || pool.startIP;
+      const newEndIP = updates.endIP || pool.endIP;
+      pool.availableIPs = generateIPRange(newStartIP, newEndIP);
+      pool.startIP = newStartIP;
+      pool.endIP = newEndIP;
+    }
+    
+    saveIPPools(pools);
+    
+    res.json({ success: true, pool: pools[poolIndex] });
+  } catch (error) {
+    console.error('Error updating IP pool:', error);
+    res.status(500).json({ error: 'Failed to update IP pool' });
+  }
+});
+
+app.delete('/api/ip-pools/:id', requireAuth, (req, res) => {
+  try {
+    const poolId = req.params.id;
+    
+    const pools = loadIPPools();
+    const poolIndex = pools.findIndex(p => p.id === poolId);
+    
+    if (poolIndex === -1) {
+      return res.status(404).json({ error: 'IP pool not found' });
+    }
+    
+    const pool = pools[poolIndex];
+    
+    // Check if pool has assigned IPs
+    const assignedCount = Object.keys(pool.assignedIPs).length;
+    if (assignedCount > 0) {
+      return res.status(400).json({ 
+        error: `Cannot delete pool with ${assignedCount} assigned IP(s). Release all IPs first.` 
+      });
+    }
+    
+    pools.splice(poolIndex, 1);
+    saveIPPools(pools);
+    
+    res.json({ success: true, message: 'IP pool deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting IP pool:', error);
+    res.status(500).json({ error: 'Failed to delete IP pool' });
+  }
+});
+
+// Assign IP from pool
+app.post('/api/ip-pools/:id/assign-ip', requireAuth, (req, res) => {
+  try {
+    const poolId = req.params.id;
+    const { instanceId } = req.body;
+    
+    const ipAddress = assignIPFromPool(poolId);
+    
+    if (instanceId) {
+      assignIPToInstance(poolId, ipAddress, instanceId);
+    }
+    
+    res.json({ success: true, ipAddress, poolId });
+  } catch (error) {
+    console.error('Error assigning IP:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Release IP back to pool
+app.post('/api/ip-pools/:id/release-ip', requireAuth, (req, res) => {
+  try {
+    const poolId = req.params.id;
+    const { ipAddress } = req.body;
+    
+    if (!ipAddress) {
+      return res.status(400).json({ error: 'IP address is required' });
+    }
+    
+    const released = releaseIPToPool(poolId, ipAddress);
+    
+    if (released) {
+      res.json({ success: true, message: `IP ${ipAddress} released back to pool` });
+    } else {
+      res.status(404).json({ error: `IP ${ipAddress} not found in assigned IPs` });
+    }
+  } catch (error) {
+    console.error('Error releasing IP:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get IP pool statistics
+app.get('/api/ip-pools/:id/stats', requireAuth, (req, res) => {
+  try {
+    const poolId = req.params.id;
+    const pools = loadIPPools();
+    const pool = pools.find(p => p.id === poolId);
+    
+    if (!pool) {
+      return res.status(404).json({ error: 'IP pool not found' });
+    }
+    
+    const stats = {
+      totalIPs: pool.availableIPs.length + Object.keys(pool.assignedIPs).length,
+      availableIPs: pool.availableIPs.length,
+      assignedIPs: Object.keys(pool.assignedIPs).length,
+      utilizationPercent: Math.round((Object.keys(pool.assignedIPs).length / (pool.availableIPs.length + Object.keys(pool.assignedIPs).length)) * 100)
+    };
+    
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting pool stats:', error);
+    res.status(500).json({ error: 'Failed to get pool statistics' });
+  }
+});
+
 // Cloud-Init API routes
 app.get('/api/cloudinit-templates', requireAuth, (req, res) => {
   // Return available Cloud-Init templates
@@ -2768,7 +3167,8 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     dns2,
     // IP Configuration
     ipAddressCIDR,
-    gateway
+    gateway,
+    ipPoolId
   } = req.body;
 
   if (!templateId || !instanceName || !username || !password) {
@@ -2809,6 +3209,36 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     return mac.join(':');
   }
   const macAddress = generateRandomMac();
+
+  // Assign IP from pool if ipPoolId is provided
+  let assignedIP = null;
+  if (ipPoolId) {
+    try {
+      const pools = loadIPPools();
+      const pool = pools.find(p => p.id === ipPoolId);
+      if (!pool) {
+        return res.status(400).json({ error: 'IP pool not found' });
+      }
+      
+      assignedIP = assignIPFromPool(pool);
+      if (!assignedIP) {
+        return res.status(400).json({ error: 'No available IPs in the selected pool' });
+      }
+      
+      // Save updated pools
+      saveIPPools(pools);
+      
+      // Set ipAddressCIDR from assigned IP
+      const subnet = pool.network.split('/')[1];
+      ipAddressCIDR = `${assignedIP}/${subnet}`;
+      gateway = pool.gateway;
+      
+      console.log(`Assigned IP ${assignedIP} from pool ${ipPoolId} to instance ${instanceId}`);
+    } catch (error) {
+      console.error('Error assigning IP from pool:', error);
+      return res.status(500).json({ error: 'Failed to assign IP from pool' });
+    }
+  }
 
   // Create Cloud-Init user-data from template
   let userData = template.userDataTemplate
@@ -3180,6 +3610,8 @@ key = ${rbdStorage.key}
         // IP Configuration
         ipAddressCIDR: ipAddressCIDR || null,
         gateway: gateway || null,
+        ipPoolId: ipPoolId || null,
+        assignedIP: assignedIP || null,
         // Other settings
         graphics: 'virtio',
         machine: 'q35',

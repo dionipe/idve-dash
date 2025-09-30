@@ -176,6 +176,15 @@ function showCreateInstanceModal() {
   populateISOs();
   populateBridges();
   populateStoragePools();
+  populateInstanceIPPools();
+
+  // Setup IP type change handler for regular instances
+  const ipTypeSelect = document.getElementById('instance-ip-type');
+  if (ipTypeSelect) {
+    ipTypeSelect.addEventListener('change', handleInstanceIPTypeChange);
+    // Initialize with default selection
+    handleInstanceIPTypeChange.call(ipTypeSelect);
+  }
 
   // Reset form state for new instance creation
   const form = document.getElementById('create-instance-form');
@@ -314,6 +323,7 @@ function generateSummary() {
     { key: 'Memory', value: `${formData.get('memory')} MiB` },
     { key: 'Balloon Device', value: formData.get('balloonDevice') === 'on' ? 'Yes' : 'No' },
     { key: 'Network Bridge', value: formData.get('networkBridge') || 'None' },
+    { key: 'IP Pool', value: formData.get('ipPoolId') || 'DHCP' },
     { key: 'VLAN Tag', value: formData.get('vlanTag') || 'None' },
     { key: 'Network Model', value: formData.get('networkModel') || 'virtio' },
     { key: 'MAC Address', value: macAddressDisplay },
@@ -369,6 +379,10 @@ function createInstance() {
     memory: parseInt(formData.get('memory')) || 2048,
     balloonDevice: formData.get('balloonDevice') === 'on',
     networkBridge: formData.get('networkBridge'),
+    ipType: formData.get('ipType') || 'dhcp',
+    ipPoolId: formData.get('ipPoolId'),
+    ipAddress: formData.get('ipAddress'),
+    gateway: formData.get('gateway'),
     vlanTag: formData.get('vlanTag'),
     networkModel: formData.get('networkModel') || 'virtio',
     macAddress: macAddress,
@@ -922,6 +936,45 @@ function populateBridges() {
   });
 }
 
+function populateStoragePools() {
+  fetch('/api/storages', {
+    credentials: 'include'
+  })
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('storage-pool');
+    select.innerHTML = '<option value="">Select Storage Pool</option>';
+    data.forEach(storage => {
+      const option = document.createElement('option');
+      option.value = storage.path;
+      option.textContent = `${storage.name} (${storage.path})`;
+      select.appendChild(option);
+    });
+  });
+}
+
+function populateInstanceIPPools() {
+  fetch('/api/ip-pools', {
+    credentials: 'include'
+  })
+  .then(response => response.json())
+  .then(data => {
+    const select = document.getElementById('instance-ip-pool');
+    select.innerHTML = '<option value="">Select an IP pool</option>';
+    data.forEach(pool => {
+      const option = document.createElement('option');
+      option.value = pool.id;
+      option.textContent = `${pool.name} (${pool.network}) - ${pool.availableIPs.length} available IPs`;
+      select.appendChild(option);
+    });
+  })
+  .catch(error => {
+    console.error('Error loading IP pools:', error);
+    const select = document.getElementById('instance-ip-pool');
+    select.innerHTML = '<option value="">Failed to load IP pools</option>';
+  });
+}
+
 function populateEditBridges() {
   fetch('/api/networks', {
     credentials: 'include'
@@ -1277,6 +1330,13 @@ function showCloudInitModal() {
   populateCloudInitTemplates();
   populateCloudInitBridges();
   populateCloudInitStoragePools();
+  loadIPPools();
+  
+  // Setup IP type change handler
+  const ipTypeSelect = document.getElementById('cloudinit-ip-type');
+  ipTypeSelect.addEventListener('change', handleIPTypeChange);
+  // Initialize with default selection
+  handleIPTypeChange.call(ipTypeSelect);
 }
 
 function closeCloudInitModal() {
@@ -1458,6 +1518,63 @@ function populateCloudInitStoragePools() {
   });
 }
 
+function loadIPPools() {
+  fetch('/api/ip-pools', {
+    credentials: 'include'
+  })
+  .then(response => response.json())
+  .then(pools => {
+    const select = document.getElementById('cloudinit-ip-pool');
+    select.innerHTML = '<option value="">Select an IP pool</option>';
+    
+    pools.forEach(pool => {
+      const option = document.createElement('option');
+      option.value = pool.id;
+      option.textContent = `${pool.name} (${pool.availableIPs.length} available IPs)`;
+      select.appendChild(option);
+    });
+  })
+  .catch(error => {
+    console.error('Error loading IP pools:', error);
+    const select = document.getElementById('cloudinit-ip-pool');
+    select.innerHTML = '<option value="">Failed to load IP pools</option>';
+  });
+}
+
+function handleIPTypeChange() {
+  const ipType = this.value;
+  const poolSection = document.getElementById('ip-pool-section');
+  const manualSection = document.getElementById('manual-ip-section');
+  
+  // Hide all sections first
+  poolSection.classList.add('hidden');
+  manualSection.classList.add('hidden');
+  
+  // Show relevant section
+  if (ipType === 'pool') {
+    poolSection.classList.remove('hidden');
+  } else if (ipType === 'manual') {
+    manualSection.classList.remove('hidden');
+  }
+}
+
+function handleInstanceIPTypeChange() {
+  const ipType = this.value;
+  const poolSection = document.getElementById('instance-ip-pool-section');
+  const manualSection = document.getElementById('instance-manual-ip-section');
+  
+  // Hide all sections first
+  poolSection.classList.add('hidden');
+  manualSection.classList.add('hidden');
+  
+  // Show relevant section
+  if (ipType === 'pool') {
+    poolSection.classList.remove('hidden');
+  } else if (ipType === 'manual') {
+    manualSection.classList.remove('hidden');
+  }
+}
+
 function createCloudInitInstance() {
   const form = document.getElementById('cloudinit-form');
   const formData = new FormData(form);
@@ -1490,6 +1607,22 @@ function createCloudInitInstance() {
     return;
   }
 
+  // Validate IP configuration
+  const ipType = formData.get('ipType');
+  if (ipType === 'pool') {
+    const ipPoolId = formData.get('ipPoolId');
+    if (!ipPoolId) {
+      showNotification('Please select an IP pool', 'error');
+      return;
+    }
+  } else if (ipType === 'manual') {
+    const ipAddress = formData.get('ipAddress');
+    if (!ipAddress) {
+      showNotification('IP Address/CIDR is required for manual configuration', 'error');
+      return;
+    }
+  }
+
   // Additional validation for RBD storage
   if (storagePool && storagePool.startsWith('rbd:')) {
     const confirmRBD = confirm('You have selected RBD storage. This requires a properly configured Ceph cluster. Continue?');
@@ -1518,8 +1651,10 @@ function createCloudInitInstance() {
     domain: formData.get('domain'),
     dns1: formData.get('dns1'),
     dns2: formData.get('dns2'),
-    // IP Configuration - use CIDR format if provided, otherwise use custom IP
-    ipAddressCIDR: formData.get('ipAddress') || formData.get('customIpAddress'),
+    // IP Configuration
+    ipType: formData.get('ipType'),
+    ipPoolId: formData.get('ipPoolId'),
+    ipAddressCIDR: formData.get('ipAddress'),
     gateway: formData.get('gateway')
   };
 

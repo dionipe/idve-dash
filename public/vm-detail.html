@@ -188,6 +188,153 @@ Back to Instances
 </div>
 </div>
 </div>
+<div class="mt-8 rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+  <h3 class="mb-4 text-lg font-bold text-slate-900 dark:text-white">Configuration Details</h3>
+  <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div class="space-y-4">
+      <div>
+        <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">System Configuration</h4>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Instance ID:</span>
+            <span class="font-mono text-slate-900 dark:text-white" id="config-instance-id">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Host:</span>
+            <span class="text-slate-900 dark:text-white" id="config-host">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">OS Type:</span>
+            <span class="text-slate-900 dark:text-white" id="config-os-type">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Machine:</span>
+            <span class="text-slate-900 dark:text-white" id="config-machine">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">BIOS:</span>
+            <span class="text-slate-900 dark:text-white" id="config-bios">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Graphics:</span>
+            <span class="text-slate-900 dark:text-white" id="config-graphics">-</span>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">CPU Configuration</h4>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">CPU Sockets:</span>
+            <span class="text-slate-900 dark:text-white" id="config-cpu-sockets">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">CPU Cores:</span>
+            <span class="text-slate-900 dark:text-white" id="config-cpu-cores">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">CPU Type:</span>
+            <span class="text-slate-900 dark:text-white" id="config-cpu-type">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Total CPUs:</span>
+            <span class="text-slate-900 dark:text-white" id="config-total-cpus">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="space-y-4">
+      <div>
+        <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Memory & Storage</h4>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Memory:</span>
+            <span class="text-slate-900 dark:text-white" id="config-memory">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Disk Size:</span>
+            <span class="text-slate-900 dark:text-white" id="config-disk-size">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Storage Pool:</span>
+            <span class="text-slate-900 dark:text-white" id="config-storage-pool">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Disk Bus:</span>
+            <span class="text-slate-900 dark:text-white" id="config-disk-bus">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">SCSI Controller:</span>
+            <span class="text-slate-900 dark:text-white" id="config-scsi-controller">-</span>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Network Configuration</h4>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Network Bridge:</span>
+            <span class="text-slate-900 dark:text-white" id="config-network-bridge">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Network Model:</span>
+            <span class="text-slate-900 dark:text-white" id="config-network-model">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">MAC Address:</span>
+            <span class="font-mono text-slate-900 dark:text-white" id="config-mac-address">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">VLAN Tag:</span>
+            <span class="text-slate-900 dark:text-white" id="config-vlan-tag">-</span>
+          </div>
+        </div>
+      </div>
+      
+      <div>
+        <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Additional Features</h4>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">TPM:</span>
+            <span class="text-slate-900 dark:text-white" id="config-tpm">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">QEMU Agent:</span>
+            <span class="text-slate-900 dark:text-white" id="config-qemu-agent">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Balloon Device:</span>
+            <span class="text-slate-900 dark:text-white" id="config-balloon">-</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-500 dark:text-slate-400">Created:</span>
+            <span class="text-slate-900 dark:text-white" id="config-created-at">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="mt-6">
+    <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">CD-ROMs</h4>
+    <div class="text-sm text-slate-900 dark:text-white" id="config-cdroms">None</div>
+  </div>
+  
+  <div class="mt-6">
+    <div class="flex items-center justify-between mb-2">
+      <h4 class="text-sm font-semibold text-slate-700 dark:text-slate-300">Raw Configuration (JSON)</h4>
+      <button onclick="toggleRawConfig()" class="text-xs text-primary hover:text-primary/80 font-medium">
+        <span id="raw-config-toggle">Show</span>
+      </button>
+    </div>
+    <div id="raw-config-container" class="hidden">
+      <pre class="bg-slate-100 dark:bg-slate-800 p-4 rounded-lg text-xs overflow-x-auto text-slate-900 dark:text-slate-100" id="raw-config-json"></pre>
+    </div>
+  </div>
+</div>
 </div>
 </main>
 </div>
@@ -273,9 +420,22 @@ function loadInstanceDetails(instanceId) {
         const typeElement = statusCards[1].querySelector('p.font-semibold');
         if (typeElement) typeElement.textContent = 'Standard';
         
-        // IP Address
+        // IP Address - try to get real IP if instance is running
         const ipElement = statusCards[2].querySelector('p.font-semibold');
-        if (ipElement) ipElement.textContent = data.ipAddress || 'N/A';
+        if (ipElement) {
+          if (data.status === 'running' && data.macAddress) {
+            // Try to get real IP address for running instances
+            getInstanceIPAddress(instanceId, data.macAddress)
+              .then(realIP => {
+                ipElement.textContent = realIP || 'Detecting...';
+              })
+              .catch(() => {
+                ipElement.textContent = data.ipAddress || 'N/A';
+              });
+          } else {
+            ipElement.textContent = data.ipAddress || 'N/A';
+          }
+        }
         
         // Operating System
         const osElement = statusCards[3].querySelector('p.font-semibold');
@@ -306,6 +466,9 @@ function loadInstanceDetails(instanceId) {
         resourceValues[2].textContent = `${diskUsage}%`;
       }
     }
+
+    // Update configuration details
+    updateConfigurationDetails(data);
   })
   .catch(error => {
     console.error('Error loading instance details:', error);
@@ -333,6 +496,68 @@ function openConsole(instanceId) {
   .catch(error => {
     console.error('Error opening console:', error);
     alert(`Failed to open console for ${instanceId}: ${error.message}`);
+  });
+}
+
+function updateConfigurationDetails(data) {
+  document.getElementById('config-host').textContent = data.host || '-';
+  document.getElementById('config-os-type').textContent = data.osType || '-';
+  document.getElementById('config-machine').textContent = data.machine || '-';
+  document.getElementById('config-bios').textContent = data.bios || '-';
+  document.getElementById('config-graphics').textContent = data.graphics || '-';
+  
+  // CPU Configuration
+  document.getElementById('config-cpu-sockets').textContent = data.cpuSockets || '-';
+  document.getElementById('config-cpu-cores').textContent = data.cpuCores || '-';
+  document.getElementById('config-cpu-type').textContent = data.cpuType || '-';
+  const totalCpus = data.cpuSockets && data.cpuCores ? data.cpuSockets * data.cpuCores : '-';
+  document.getElementById('config-total-cpus').textContent = totalCpus;
+  
+  // Memory & Storage
+  document.getElementById('config-memory').textContent = data.memory ? `${data.memory} MB` : '-';
+  document.getElementById('config-disk-size').textContent = data.diskSize ? `${data.diskSize} GiB` : '-';
+  document.getElementById('config-storage-pool').textContent = data.storagePool || '-';
+  document.getElementById('config-disk-bus').textContent = data.diskBus || '-';
+  document.getElementById('config-scsi-controller').textContent = data.diskScsiController || '-';
+  
+  // Network Configuration
+  document.getElementById('config-network-bridge').textContent = data.networkBridge || '-';
+  document.getElementById('config-network-model').textContent = data.networkModel || '-';
+  document.getElementById('config-mac-address').textContent = data.macAddress || '-';
+  document.getElementById('config-vlan-tag').textContent = data.vlanTag || 'None';
+  
+  // Additional Features
+  document.getElementById('config-tpm').textContent = data.addTpm ? 'Enabled' : 'Disabled';
+  document.getElementById('config-qemu-agent').textContent = data.qemuAgent ? 'Enabled' : 'Disabled';
+  document.getElementById('config-balloon').textContent = data.balloonDevice ? 'Enabled' : 'Disabled';
+  document.getElementById('config-created-at').textContent = data.createdAt ? new Date(data.createdAt).toLocaleString() : '-';
+  
+  // CD-ROMs
+  const cdroms = data.cdroms || [];
+  const cdromsText = cdroms.length > 0 ? cdroms.join(', ') : 'None';
+  document.getElementById('config-cdroms').textContent = cdromsText;
+  
+  // Raw JSON
+  document.getElementById('raw-config-json').textContent = JSON.stringify(data, null, 2);
+}
+
+function toggleRawConfig() {
+  const container = document.getElementById('raw-config-container');
+  const toggle = document.getElementById('raw-config-toggle');
+  
+  if (container.classList.contains('hidden')) {
+    container.classList.remove('hidden');
+    toggle.textContent = 'Hide';
+  } else {
+    container.classList.add('hidden');
+    toggle.textContent = 'Show';
+  }
+}
+
+function getInstanceIPAddress(instanceId, macAddress) {
+  return new Promise((resolve, reject) => {
+    // For now, just return null - IP detection can be implemented later
+    resolve(null);
   });
 }
 </script>

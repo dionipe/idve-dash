@@ -40,6 +40,26 @@
     .dark .clay-shadow-inset {
       box-shadow: inset -4px -4px 8px rgba(255, 255, 255, 0.05), inset 4px 4px 8px rgba(0, 0, 0, 0.5);
     }
+
+    /* Tab Styles */
+    .tab-button.active {
+      color: rgb(15 23 42);
+      background-color: rgb(255 255 255);
+      box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    }
+
+    .dark .tab-button.active {
+      color: rgb(248 250 252);
+      background-color: rgb(51 65 85);
+    }
+
+    .tab-content {
+      display: block;
+    }
+
+    .tab-content.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-800 dark:text-slate-200">
@@ -74,33 +94,128 @@
       <div class="mx-auto max-w-7xl">
         <div class="mb-6 flex items-center justify-between">
           <div>
-            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Networks</h2>
-            <p class="text-sm text-slate-500 dark:text-slate-400">Manage network configurations including interfaces, bonds, VLANs, and bridges.</p>
+            <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Networks & IP Pools</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400">Manage network configurations, interfaces, IP pools, and address assignments.</p>
           </div>
-          <button onclick="showCreateNetworkModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
-            <span class="material-symbols-outlined mr-2">add</span>
-            Create Network
-          </button>
+          <div class="flex gap-3">
+            <button id="create-network-btn" onclick="showCreateNetworkModal()" class="rounded-lg bg-primary px-4 py-2 font-semibold text-white transition hover:bg-primary/90">
+              <span class="material-symbols-outlined mr-2">add</span>
+              Create Network
+            </button>
+            <button id="create-ip-pool-btn" onclick="showCreateIPPoolModal()" class="rounded-lg bg-green-600 hover:bg-green-700 px-4 py-2 font-semibold text-white transition hidden">
+              <span class="material-symbols-outlined mr-2">group_work</span>
+              Create IP Pool
+            </button>
+          </div>
         </div>
-        <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow overflow-hidden">
-          <table class="w-full">
-            <thead class="bg-slate-100 dark:bg-slate-800/50">
-              <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Name</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Type</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">AutoStart</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">VlanAware</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Port/Slave/Bond</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">CIDR</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Gateway</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="networks-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
-              <!-- Networks will be loaded here -->
-            </tbody>
-          </table>
+
+        <!-- Tab Navigation -->
+        <div class="mb-6">
+          <nav class="flex space-x-1 bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg">
+            <button onclick="switchTab('networks')" id="networks-tab" class="tab-button active flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-700 shadow-sm">
+              <span class="material-symbols-outlined mr-2 text-sm">router</span>
+              Networks
+            </button>
+            <button onclick="switchTab('ip-pools')" id="ip-pools-tab" class="tab-button flex-1 py-2 px-4 text-sm font-medium rounded-md transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300">
+              <span class="material-symbols-outlined mr-2 text-sm">group_work</span>
+              IP Pools
+            </button>
+          </nav>
+        </div>
+
+        <!-- Networks Tab Content -->
+        <div id="networks-content" class="tab-content">
+          <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow overflow-hidden">
+            <table class="w-full">
+              <thead class="bg-slate-100 dark:bg-slate-800/50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Name</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Type</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Active</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">AutoStart</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">VlanAware</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Port/Slave/Bond</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">CIDR</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Gateway</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="networks-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+                <!-- Networks will be loaded here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- IP Pools Tab Content -->
+        <div id="ip-pools-content" class="tab-content hidden">
+          <!-- IP Pools Statistics -->
+          <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Total IP Pools</p>
+                  <p class="text-2xl font-bold text-slate-900 dark:text-white" id="total-ip-pools">0</p>
+                </div>
+                <span class="material-symbols-outlined text-3xl text-slate-400">group_work</span>
+              </div>
+            </div>
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Total IP Addresses</p>
+                  <p class="text-2xl font-bold text-blue-600 dark:text-blue-400" id="total-ip-addresses">0</p>
+                </div>
+                <span class="material-symbols-outlined text-3xl text-blue-500">network_ping</span>
+              </div>
+            </div>
+            <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-slate-500 dark:text-slate-400">Available IPs</p>
+                  <p class="text-2xl font-bold text-green-600 dark:text-green-400" id="available-ip-addresses">0</p>
+                </div>
+                <span class="material-symbols-outlined text-3xl text-green-500">check_circle</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- IP Pools List -->
+          <div class="rounded-xl bg-background-light dark:bg-background-dark clay-shadow overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h3 class="text-lg font-bold text-slate-900 dark:text-white">IP Address Pools</h3>
+              <p class="text-sm text-slate-500 dark:text-slate-400">Manage IP pools for static IP assignment to instances</p>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead class="bg-slate-50 dark:bg-slate-800/50">
+                  <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Network</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Interface</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Gateway</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total IPs</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Available</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Assigned</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Utilization</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="ip-pools-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+                  <!-- IP Pools will be loaded here -->
+                </tbody>
+              </table>
+              <div id="ip-pools-loading" class="text-center py-8 text-slate-500 dark:text-slate-400">
+                <span class="material-symbols-outlined animate-spin mr-2">refresh</span>
+                Loading IP pools...
+              </div>
+              <div id="no-ip-pools" class="text-center py-8 text-slate-500 dark:text-slate-400 hidden">
+                <span class="material-symbols-outlined text-4xl mb-2">group_work</span>
+                <p>No IP pools found</p>
+                <p class="text-sm mt-2">Create your first IP pool to get started</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
@@ -145,6 +260,104 @@
       </form>
     </div>
   </div>
+
+  <!-- IP Pool Modal -->
+  <div id="ip-pool-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+    <div class="w-full max-w-lg rounded-xl bg-background-light dark:bg-background-dark clay-shadow p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="ip-pool-modal-title" class="text-lg font-bold text-slate-900 dark:text-white">Create IP Pool</h3>
+        <button onclick="closeIPPoolModal()" class="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <form id="create-ip-pool-form">
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2" for="ip-pool-name">
+              <span class="material-symbols-outlined mr-2 text-slate-500">label</span>
+              Pool Name
+            </label>
+            <input type="text" id="ip-pool-name" name="name" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:border-primary focus:ring-primary" placeholder="e.g., Production Network" required>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2" for="ip-pool-network">
+                <span class="material-symbols-outlined mr-2 text-slate-500">network_ping</span>
+                Network (CIDR)
+              </label>
+              <input type="text" id="ip-pool-network" name="network" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}\/[0-9]{1,2}$" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:border-primary focus:ring-primary" placeholder="192.168.1.0/24" required>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Network address with subnet mask</p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2" for="ip-pool-gateway">
+                <span class="material-symbols-outlined mr-2 text-slate-500">router</span>
+                Gateway
+              </label>
+              <input type="text" id="ip-pool-gateway" name="gateway" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:border-primary focus:ring-primary" placeholder="192.168.1.1" required>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Default gateway for the network</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2" for="ip-pool-start-ip">
+                <span class="material-symbols-outlined mr-2 text-slate-500">play_arrow</span>
+                Start IP
+              </label>
+              <input type="text" id="ip-pool-start-ip" name="startIP" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:border-primary focus:ring-primary" placeholder="192.168.1.10" required>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">First IP address to assign</p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2" for="ip-pool-end-ip">
+                <span class="material-symbols-outlined mr-2 text-slate-500">stop</span>
+                End IP
+              </label>
+              <input type="text" id="ip-pool-end-ip" name="endIP" pattern="^([0-9]{1,3}\.){3}[0-9]{1,3}$" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:border-primary focus:ring-primary" placeholder="192.168.1.100" required>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Last IP address to assign</p>
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2" for="ip-pool-interface">
+                <span class="material-symbols-outlined mr-2 text-slate-500">router</span>
+                Network Interface
+              </label>
+              <select id="ip-pool-interface" name="interface" class="w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-3 text-sm focus:border-primary focus:ring-primary" required>
+                <option value="">Select Network Interface</option>
+                <!-- Network interfaces will be populated via JS -->
+              </select>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Network interface this IP pool will be associated with</p>
+            </div>
+          </div>
+
+          <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <div class="flex items-start">
+              <span class="material-symbols-outlined text-blue-600 dark:text-blue-400 mr-2 mt-0.5">info</span>
+              <div>
+                <p class="text-sm font-medium text-blue-800 dark:text-blue-200">IP Pool Information</p>
+                <p class="text-xs text-blue-700 dark:text-blue-300 mt-1" id="ip-pool-info">
+                  Enter network details above to see pool information
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-4 pt-6 border-t border-slate-200/10 mt-6">
+          <button type="button" onclick="closeIPPoolModal()" class="px-6 py-3 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
+            Cancel
+          </button>
+          <button type="submit" id="ip-pool-submit-btn" class="px-6 py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition-colors flex items-center gap-2">
+            <span class="material-symbols-outlined">group_work</span>
+            Create IP Pool
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="networks.js"></script>
 

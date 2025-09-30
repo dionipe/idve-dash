@@ -5,10 +5,12 @@ IDVE Dashboard is a web-based virtual machine management system built with Node.
 ## Supported Operating Systems
 
 This guide covers installation on:
-- Debian 11/12
+- **Debian 11/12/13** - 📖 [Detailed Debian Guide](DEBIAN-DEPENDENCIES.md)
 - Ubuntu 20.04/22.04/24.04
 - Rocky Linux 8/9
 - CentOS 7/8 (Stream)
+
+> **Note**: For comprehensive Debian installation with verified dependencies, see [DEBIAN-DEPENDENCIES.md](DEBIAN-DEPENDENCIES.md)
 
 ## System Requirements
 
