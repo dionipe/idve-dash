@@ -2632,10 +2632,15 @@ app.post('/api/instances/cloudinit', requireAuth, (req, res) => {
     .replace(/{{sshKey}}/g, sshKey || '')
     .replace(/{{macAddress}}/g, macAddress);
 
-  // Add password if provided
-  if (password) {
-    userData = userData.replace(/'${username || 'ubuntu'}':${password}|centos:centos|debian:debian|freebsd:freebsd|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
+  // Ensure userData starts with #cloud-config
+  if (!userData.trim().startsWith('#cloud-config')) {
+    userData = '#cloud-config\n' + userData;
   }
+
+  // // Add password if provided
+  // if (password) {
+  //   userData = userData.replace(/'${username || 'ubuntu'}':${password}|centos:centos|debian:debian|freebsd:freebsd|rocky:rocky/, `${username || 'ubuntu'}:${password}`);
+  // }
 
   // Add disk resize command if enabled
   if (diskResize) {
