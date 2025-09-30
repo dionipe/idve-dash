@@ -510,11 +510,20 @@
               <label class="floating-label" for="edit-disk-size">Hard Disk 1 (GiB)</label>
             </div>
 
-            <!-- Add Hard Disk Button -->
+            <!-- Storage Pool -->
+            <div class="relative">
+              <select id="edit-storage-pool" name="storagePool" class="form-input w-full rounded-lg bg-background-light dark:bg-background-dark border-2 border-slate-200 dark:border-slate-700 focus:border-primary focus:ring-0 p-4 pt-6 clay-shadow">
+                <option value="">Select Storage Pool</option>
+                <!-- Storage pools will be populated via JS -->
+              </select>
+              <label class="floating-label" for="edit-storage-pool">Storage Pool</label>
+            </div>
+
+            <!-- Migrate to RBD Button -->
             <div>
-              <button type="button" onclick="addHardDisk()" class="w-full h-full flex items-center justify-center gap-2 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary font-bold py-2 px-4 transition-colors clay-shadow">
-                <span class="material-symbols-outlined">add</span>
-                Add Hard Disk
+              <button type="button" onclick="migrateToRBD()" class="w-full h-full flex items-center justify-center gap-2 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-600 dark:text-orange-400 font-bold py-2 px-4 transition-colors clay-shadow">
+                <span class="material-symbols-outlined">swap_horiz</span>
+                Migrate to RBD
               </button>
             </div>
 

@@ -743,31 +743,88 @@ app.put('/api/instances/:id', requireAuth, (req, res) => {
     // Check if disk size has changed and resize if necessary
     if (req.body.diskSize && parseInt(req.body.diskSize) !== parseInt(existingConfig.diskSize)) {
       const diskPath = existingConfig.diskPath || `/var/lib/idve/instances/${instanceId}.qcow2`;
+      const newSize = parseInt(req.body.diskSize);
       
       if (fs.existsSync(diskPath)) {
-        const newSize = parseInt(req.body.diskSize);
-        console.log(`Resizing disk from ${existingConfig.diskSize}G to ${newSize}G: ${diskPath}`);
-        
-        exec(`qemu-img resize ${diskPath} ${newSize}G`, (resizeErr, resizeOut, resizeStderr) => {
-          if (resizeErr) {
-            console.error('Error resizing disk:', resizeErr);
-            return res.status(500).json({ error: 'Failed to resize disk' });
+        // Check if it's an RBD disk
+        if (diskPath.startsWith('rbd:')) {
+          // RBD resize
+          const rbdMatch = diskPath.match(/rbd:([^\/]+)\/(.+)/);
+          if (rbdMatch) {
+            const poolName = rbdMatch[1];
+            const imageName = rbdMatch[2];
+            const sizeInBytes = newSize * 1024 * 1024 * 1024; // Convert GB to bytes
+
+            // Find RBD storage configuration
+            const rbdStorage = storages.find(s => s.type === 'RBD' && s.pool === poolName);
+            if (!rbdStorage) {
+              return res.status(400).json({ error: 'RBD storage configuration not found' });
+            }
+
+            // Create temporary ceph.conf for RBD operations
+            const cephConf = `[global]
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
+key = ${rbdStorage.key}
+`;
+            const cephConfPath = `/tmp/ceph-resize-${Date.now()}.conf`;
+            fs.writeFileSync(cephConfPath, cephConf);
+
+            console.log(`Resizing RBD disk from ${existingConfig.diskSize}G to ${newSize}G: ${diskPath}`);
+
+            const resizeCmd = `rbd --conf ${cephConfPath} --id ${rbdStorage.username} resize --size ${newSize}G ${poolName}/${imageName}`;
+
+            exec(resizeCmd, (resizeErr, resizeOut, resizeStderr) => {
+              // Clean up temp ceph.conf
+              try { fs.unlinkSync(cephConfPath); } catch (e) {}
+
+              if (resizeErr) {
+                console.error('Error resizing RBD disk:', resizeErr);
+                return res.status(500).json({ error: 'Failed to resize RBD disk' });
+              }
+
+              console.log(`RBD disk resized successfully: ${diskPath} -> ${newSize}G`);
+
+              // Save updated config after successful resize
+              fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
+              console.log(`Instance configuration updated: ${configPath}`);
+
+              res.json({
+                message: 'Instance updated successfully with RBD disk resize',
+                config: updatedConfig,
+                diskResized: true,
+                newSize: `${newSize}G`
+              });
+            });
+            return; // Exit here, response will be sent in callback
           }
+        } else {
+          // Regular file resize
+          console.log(`Resizing disk from ${existingConfig.diskSize}G to ${newSize}G: ${diskPath}`);
           
-          console.log(`Disk resized successfully: ${diskPath} -> ${newSize}G`);
-          
-          // Save updated config after successful resize
-          fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
-          console.log(`Instance configuration updated: ${configPath}`);
-          
-          res.json({ 
-            message: 'Instance updated successfully with disk resize', 
-            config: updatedConfig,
-            diskResized: true,
-            newSize: `${newSize}G`
+          exec(`qemu-img resize ${diskPath} ${newSize}G`, (resizeErr, resizeOut, resizeStderr) => {
+            if (resizeErr) {
+              console.error('Error resizing disk:', resizeErr);
+              return res.status(500).json({ error: 'Failed to resize disk' });
+            }
+            
+            console.log(`Disk resized successfully: ${diskPath} -> ${newSize}G`);
+            
+            // Save updated config after successful resize
+            fs.writeFileSync(configPath, JSON.stringify(updatedConfig, null, 2));
+            console.log(`Instance configuration updated: ${configPath}`);
+            
+            res.json({ 
+              message: 'Instance updated successfully with disk resize', 
+              config: updatedConfig,
+              diskResized: true,
+              newSize: `${newSize}G`
+            });
           });
-        });
-        return; // Exit here, response will be sent in callback
+          return; // Exit here, response will be sent in callback
+        }
       }
     }
     
@@ -869,7 +926,7 @@ auth_client_required = cephx
           const tempConfPath = `/tmp/ceph-qemu-${Date.now()}.conf`;
           fs.writeFileSync(tempConfPath, cephConf);
           
-          diskPath = `rbd:${poolName}/${config.id}:conf=${tempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
+          diskPath = `rbd:${poolName}/${config.rbdImage || config.id}:conf=${tempConfPath}:id=${rbdStorage.username}:key=${rbdStorage.key}`;
           diskFormat = 'raw'; // RBD uses raw format
         } else {
           // Local storage
@@ -908,7 +965,7 @@ keyring = /dev/null
           const tempConfPath = `/tmp/ceph-rbd-${Date.now()}.conf`;
           fs.writeFileSync(tempConfPath, cephConf);
           
-          const rbdCmd = `CEPH_CONF=${tempConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} info ${poolName}/${config.id}`;
+          const rbdCmd = `CEPH_CONF=${tempConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} info ${poolName}/${config.rbdImage || config.id}`;
           
           exec(rbdCmd, (rbdErr, rbdOut, rbdStderr) => {
             // Clean up temp file
@@ -921,7 +978,7 @@ keyring = /dev/null
               const createConfPath = `/tmp/ceph-create-${Date.now()}.conf`;
               fs.writeFileSync(createConfPath, cephConf);
               
-              const createCmd = `CEPH_CONF=${createConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} create --size ${config.diskSize}G ${poolName}/${config.id}`;
+              const createCmd = `CEPH_CONF=${createConfPath} rbd --id ${rbdStorage.username} --key ${rbdStorage.key} create --size ${config.diskSize}G ${poolName}/${config.rbdImage || config.id}`;
               
               exec(createCmd, (createErr, createOut, createStderr) => {
                 // Clean up temp file
@@ -1234,6 +1291,135 @@ app.put('/api/instances/:id/stop', requireAuth, (req, res) => {
   } catch (error) {
     console.error('Error stopping instance:', error);
     res.status(500).json({ error: 'Failed to stop instance' });
+  }
+});
+
+app.post('/api/instances/:id/migrate-rbd', requireAuth, (req, res) => {
+  const instanceId = req.params.id;
+  const configPath = `/etc/idve/${instanceId}.json`;
+  const { storagePool } = req.body;
+
+  try {
+    // Check if instance config exists
+    if (!fs.existsSync(configPath)) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+
+    // Read instance config
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+    // Check if instance is running
+    exec(`ps aux | grep 'qemu-system-x86_64.*-name "${config.name}"' | grep -v grep`, (error, stdout, stderr) => {
+      if (stdout.trim() !== '') {
+        return res.status(400).json({ error: 'Instance must be stopped before migration' });
+      }
+
+      // Get current disk path
+      const currentDiskPath = config.diskPath || `/var/lib/idve/instances/${instanceId}.qcow2`;
+
+      // Check if disk exists
+      if (!fs.existsSync(currentDiskPath)) {
+        return res.status(404).json({ error: 'Instance disk not found' });
+      }
+
+      // Find RBD storage configuration
+      const rbdStorage = storages.find(s => s.type === 'RBD' && s.path === storagePool);
+      if (!rbdStorage) {
+        return res.status(400).json({ error: 'Invalid RBD storage pool' });
+      }
+
+      const poolName = rbdStorage.pool;
+      const imageName = `${instanceId}_disk`;
+      const rbdPath = `rbd:${poolName}/${imageName}`;
+
+      console.log(`Starting RBD migration for instance ${instanceId}`);
+      console.log(`Current disk: ${currentDiskPath}`);
+      console.log(`Target RBD: ${rbdPath}`);
+
+      // Create temporary ceph.conf for RBD operations
+      const cephConf = `[global]
+mon_host = ${rbdStorage.monitors.replace(/,/g, ':6789,')}:6789
+auth_cluster_required = cephx
+auth_service_required = cephx
+auth_client_required = cephx
+key = ${rbdStorage.key}
+`;
+      const cephConfPath = `/tmp/ceph-migrate-${Date.now()}.conf`;
+      fs.writeFileSync(cephConfPath, cephConf);
+
+      // Step 1: Convert qcow2 to raw if needed
+      const tempRawPath = `/tmp/${instanceId}_temp.raw`;
+      let convertCmd;
+
+      if (currentDiskPath.endsWith('.qcow2')) {
+        console.log('Converting qcow2 to raw format...');
+        convertCmd = `qemu-img convert -f qcow2 -O raw ${currentDiskPath} ${tempRawPath}`;
+      } else {
+        // Assume it's already raw
+        console.log('Disk appears to be raw format, copying...');
+        convertCmd = `cp ${currentDiskPath} ${tempRawPath}`;
+      }
+
+      exec(convertCmd, (convertErr, convertOut, convertStderr) => {
+        if (convertErr) {
+          console.error('Error converting disk:', convertErr);
+          // Clean up temp ceph.conf
+          try { fs.unlinkSync(cephConfPath); } catch (e) {}
+          return res.status(500).json({ error: 'Failed to convert disk format' });
+        }
+
+        console.log('Disk conversion completed');
+
+        // Step 2: Import to RBD with proper configuration
+        const importCmd = `rbd --conf ${cephConfPath} --id ${rbdStorage.username} import ${tempRawPath} ${poolName}/${imageName} --image-format 2`;
+        console.log(`Importing to RBD: ${importCmd}`);
+
+        exec(importCmd, (importErr, importOut, importStderr) => {
+          // Clean up temp files
+          try { fs.unlinkSync(cephConfPath); } catch (e) {}
+          try { fs.unlinkSync(tempRawPath); } catch (e) {}
+
+          if (importErr) {
+            console.error('Error importing to RBD:', importErr);
+            return res.status(500).json({ error: 'Failed to import disk to RBD' });
+          }
+
+          console.log('RBD import completed');
+
+          // Step 3: Clean up original disk if it exists
+          if (fs.existsSync(currentDiskPath)) {
+            try {
+              fs.unlinkSync(currentDiskPath);
+              console.log(`Cleaned up original disk: ${currentDiskPath}`);
+            } catch (cleanupErr) {
+              console.warn(`Warning: Could not clean up original disk ${currentDiskPath}:`, cleanupErr);
+            }
+          }
+
+          // Step 4: Update instance configuration
+          config.storagePool = storagePool;
+          config.diskPath = rbdPath;
+          config.rbdPool = poolName;
+          config.rbdImage = imageName;
+          config.migratedToRBD = true;
+          config.migrationDate = new Date().toISOString();
+
+          // Save updated config
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+          console.log(`Instance ${instanceId} migrated to RBD successfully`);
+
+          res.json({
+            message: 'Instance migrated to RBD successfully',
+            config: config,
+            rbdPath: rbdPath
+          });
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Error migrating instance to RBD:', error);
+    res.status(500).json({ error: 'Failed to migrate instance to RBD' });
   }
 });
 
@@ -2419,7 +2605,7 @@ key = ${storage.key}
   fs.writeFileSync(cephConfPath, cephConf);
   
   // List RBD images in the pool
-  const listCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${storage.username}" rbd ls --format json ${storage.pool}`;
+  const listCmd = `rbd --conf ${cephConfPath} --id ${storage.username} ls --format json ${storage.pool}`;
   
   exec(listCmd, (error, stdout, stderr) => {
     // Clean up temp conf file
@@ -2446,7 +2632,7 @@ key = ${storage.key}
 `;
           fs.writeFileSync(infoConfPath, infoConf);
           
-          const infoCmd = `CEPH_ARGS="--conf=${infoConfPath} --id=${storage.username}" rbd info --format json ${storage.pool}/${imageName}`;
+          const infoCmd = `rbd --conf ${infoConfPath} --id ${storage.username} info --format json ${storage.pool}/${imageName}`;
           
           exec(infoCmd, (infoError, infoStdout, infoStderr) => {
             // Clean up temp conf file
@@ -2531,7 +2717,7 @@ key = ${storage.key}
   fs.writeFileSync(cephConfPath, cephConf);
   
   // Delete RBD image
-  const deleteCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${storage.username}" rbd rm ${storage.pool}/${imageName}`;
+  const deleteCmd = `rbd --conf ${cephConfPath} --id ${storage.username} rm ${storage.pool}/${imageName}`;
   
   exec(deleteCmd, (error, stdout, stderr) => {
     // Clean up temp conf file
@@ -2810,7 +2996,7 @@ key = ${rbdStorage.key}
         }
 
         // Now import the raw image to RBD
-        const importCmd = `CEPH_ARGS="--conf=${cephConfPath} --id=${rbdStorage.username}" rbd import ${rawImagePath} ${poolName}/${instanceId} --image-format 2`;
+        const importCmd = `rbd --conf ${cephConfPath} --id ${rbdStorage.username} import ${rawImagePath} ${poolName}/${instanceId} --image-format 2`;
         console.log(`Importing raw image to RBD: ${importCmd}`);
 
         exec(importCmd, (importErr) => {
@@ -2909,7 +3095,7 @@ auth_client_required = cephx
 key = ${rbdStorage.key}
 `;
           fs.writeFileSync(resizeConfPath, resizeConf);
-          resizeOperations.push(`CEPH_ARGS="--conf=${resizeConfPath} --id=${rbdStorage.username}" rbd resize ${rbdConfig.pool}/${rbdConfig.image} --size ${targetSize}G`);
+          resizeOperations.push(`rbd --conf ${resizeConfPath} --id ${rbdStorage.username} resize ${rbdConfig.pool}/${rbdConfig.image} --size ${targetSize}G`);
           // Clean up conf file after resize
           setTimeout(() => { try { fs.unlinkSync(resizeConfPath); } catch (e) {} }, 1000);
         } else {
@@ -2931,7 +3117,7 @@ auth_client_required = cephx
 key = ${rbdStorage.key}
 `;
           fs.writeFileSync(resizeConfPath2, resizeConf2);
-          resizeOperations.push(`CEPH_ARGS="--conf=${resizeConfPath2} --id=${rbdStorage.username}" rbd resize ${rbdConfig.pool}/${rbdConfig.image} --size 30G`); // Base 20G + 10G
+          resizeOperations.push(`rbd --conf ${resizeConfPath2} --id ${rbdStorage.username} resize ${rbdConfig.pool}/${rbdConfig.image} --size 30G`); // Base 20G + 10G
           // Clean up conf file after resize
           setTimeout(() => { try { fs.unlinkSync(resizeConfPath2); } catch (e) {} }, 1000);
         } else {

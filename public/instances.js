@@ -575,6 +575,16 @@ function editInstance(instanceId) {
           }
         }, 100);
       }),
+      populateEditStoragePools().then(() => {
+        // Set storage pool value after dropdown is populated
+        setTimeout(() => {
+          const storagePoolSelect = document.getElementById('edit-storage-pool');
+          if (storagePoolSelect && data.storagePool) {
+            storagePoolSelect.value = data.storagePool;
+            storagePoolSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }, 100);
+      }),
       populateCloudInitBridges().then(() => {
         // Set Cloud-Init bridge value after dropdown is populated
         setTimeout(() => {
@@ -664,6 +674,7 @@ function updateInstance() {
     scsiController: formData.get('scsiController') || 'virtio-scsi-pci',
     cdroms: cdroms, // Use array instead of single cdrom
     diskSize: formData.get('diskSize') || '20',
+    storagePool: formData.get('storagePool') || '',
     networkBridge: formData.get('networkBridge') || '',
     osType: formData.get('osType') || 'linux',
 
@@ -949,60 +960,73 @@ function populateCloudInitBridges() {
   });
 }
 
-function populateStoragePools() {
-  fetch('/api/storages', {
-    credentials: 'include'
-  })
-  .then(response => response.json())
-  .then(data => {
-    const select = document.getElementById('storage-pool');
-    select.innerHTML = '<option value="">Select Storage Pool</option>';
-    data.forEach(storage => {
-      const option = document.createElement('option');
-      option.value = storage.path;
-
-      // Enhanced display for different storage types
-      let displayText = `${storage.name}`;
-      if (storage.type === 'RBD') {
-        displayText += ` (RBD: ${storage.pool}) - ${storage.capacity || 'Capacity unknown'}`;
-        option.dataset.type = 'RBD';
-      } else {
-        displayText += ` (${storage.type}) - ${storage.capacity || 'Capacity unknown'}`;
-        option.dataset.type = storage.type;
+function populateEditStoragePools() {
+  return new Promise((resolve, reject) => {
+    fetch('/api/storages', {
+      credentials: 'include'
+    })
+    .then(response => response.json())
+    .then(data => {
+      const select = document.getElementById('edit-storage-pool');
+      if (!select) {
+        resolve();
+        return;
       }
 
-      option.textContent = displayText;
-      select.appendChild(option);
-    });
+      select.innerHTML = '<option value="">Select Storage Pool</option>';
+      data.forEach(storage => {
+        const option = document.createElement('option');
+        option.value = storage.path;
 
-    // Add change listener for storage pool selection
-    select.addEventListener('change', function() {
-      const selectedOption = this.options[this.selectedIndex];
-      const storageType = selectedOption.dataset.type;
-
-      // Show warning for RBD storage
-      const warningDiv = document.getElementById('create-rbd-warning');
-      if (storageType === 'RBD') {
-        if (!warningDiv) {
-          const warning = document.createElement('div');
-          warning.id = 'create-rbd-warning';
-          warning.className = 'mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg';
-          warning.innerHTML = `
-            <div class="flex items-start">
-              <span class="material-symbols-outlined text-amber-600 dark:text-amber-400 mr-2 mt-0.5">warning</span>
-              <div>
-                <p class="text-sm font-medium text-amber-800 dark:text-amber-200">RBD Storage Selected</p>
-                <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">
-                  This instance will use Ceph RBD distributed storage. Ensure Ceph cluster is properly configured and accessible.
-                </p>
-              </div>
-            </div>
-          `;
-          this.parentNode.appendChild(warning);
+        // Enhanced display for different storage types
+        let displayText = `${storage.name}`;
+        if (storage.type === 'RBD') {
+          displayText += ` (RBD: ${storage.pool}) - ${storage.capacity || 'Capacity unknown'}`;
+          option.dataset.type = 'RBD';
+        } else {
+          displayText += ` (${storage.type}) - ${storage.capacity || 'Capacity unknown'}`;
+          option.dataset.type = storage.type;
         }
-      } else if (warningDiv) {
-        warningDiv.remove();
-      }
+
+        option.textContent = displayText;
+        select.appendChild(option);
+      });
+
+      // Add change listener for storage pool selection
+      select.addEventListener('change', function() {
+        const selectedOption = this.options[this.selectedIndex];
+        const storageType = selectedOption.dataset.type;
+
+        // Show warning for RBD storage
+        const warningDiv = document.getElementById('edit-rbd-warning');
+        if (storageType === 'RBD') {
+          if (!warningDiv) {
+            const warning = document.createElement('div');
+            warning.id = 'edit-rbd-warning';
+            warning.className = 'mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg';
+            warning.innerHTML = `
+              <div class="flex items-start">
+                <span class="material-symbols-outlined text-amber-600 dark:text-amber-400 mr-2 mt-0.5">warning</span>
+                <div>
+                  <p class="text-sm font-medium text-amber-800 dark:text-amber-200">RBD Storage Selected</p>
+                  <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                    This will migrate the instance to Ceph RBD distributed storage. Ensure Ceph cluster is properly configured.
+                  </p>
+                </div>
+              </div>
+            `;
+            this.parentNode.appendChild(warning);
+          }
+        } else if (warningDiv) {
+          warningDiv.remove();
+        }
+      });
+
+      resolve();
+    })
+    .catch(error => {
+      console.error('Error loading storage pools:', error);
+      reject(error);
     });
   });
 }
@@ -1171,8 +1195,79 @@ function addHardDisk() {
   alert('Add Hard Disk functionality - to be implemented');
 }
 
-function addNetworkDevice() {
-  alert('Add Network Device functionality - to be implemented');
+function migrateToRBD() {
+  const form = document.getElementById('edit-instance-form');
+  const instanceId = form.dataset.instanceId;
+  const storagePoolSelect = document.getElementById('edit-storage-pool');
+
+  if (!instanceId) {
+    alert('No instance selected');
+    return;
+  }
+
+  if (!storagePoolSelect || !storagePoolSelect.value) {
+    alert('Please select a storage pool first');
+    return;
+  }
+
+  const selectedOption = storagePoolSelect.options[storagePoolSelect.selectedIndex];
+  if (selectedOption.dataset.type !== 'RBD') {
+    alert('Migration to RBD requires selecting an RBD storage pool');
+    return;
+  }
+
+  // Confirm migration
+  if (!confirm('This will migrate the instance disk to RBD storage. The instance must be stopped first. Continue?')) {
+    return;
+  }
+
+  // Show loading
+  const migrateBtn = document.querySelector('button[onclick="migrateToRBD()"]');
+  const originalText = migrateBtn.innerHTML;
+  migrateBtn.disabled = true;
+  migrateBtn.innerHTML = '<span class="inline-block mr-2">Migrating...</span><span class="material-symbols-outlined text-sm animate-spin">refresh</span>';
+
+  // First check if instance is running
+  fetch(`/api/instances/${instanceId}/status`, {
+    credentials: 'include'
+  })
+  .then(response => response.json())
+  .then(statusData => {
+    if (statusData.isRunning) {
+      throw new Error('Instance must be stopped before migration');
+    }
+
+    // Proceed with migration
+    return fetch(`/api/instances/${instanceId}/migrate-rbd`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        storagePool: storagePoolSelect.value
+      }),
+    });
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.message) {
+      alert(`Migration completed successfully!`);
+      // Reload instance data
+      editInstance(instanceId);
+    } else {
+      alert(`Migration failed: ${data.error}`);
+    }
+  })
+  .catch(error => {
+    console.error('Migration error:', error);
+    alert(`Migration failed: ${error.message}`);
+  })
+  .finally(() => {
+    // Restore button
+    migrateBtn.disabled = false;
+    migrateBtn.innerHTML = originalText;
+  });
 }
 
 // Cloud-Init Instance functions
