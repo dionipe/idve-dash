@@ -160,6 +160,9 @@ If you find this project helpful, consider supporting the development:
 
 [![Support via Saweria](https://img.shields.io/badge/Support-Saweria-orange)](https://saweria.co/dionipe)
 
+### QR Code for Donations
+<img src="https://saweria.co/widgets/qr?streamKey=e9c85fdbc69290bbcc8e713c0052a0be" alt="Saweria QR Code" width="200" height="200">
+
 ## 🤝 Contributing
 
 1. Fork the repository
