@@ -154,6 +154,12 @@ The application manages network interfaces through `/etc/network/interfaces`. En
 - Monitor system resources for VM operations
 - Regular backup of VM configurations
 
+## 💝 Support
+
+If you find this project helpful, consider supporting the development:
+
+[![Support via Saweria](https://img.shields.io/badge/Support-Saweria-orange)](https://saweria.co/dionipe)
+
 ## 🤝 Contributing
 
 1. Fork the repository
